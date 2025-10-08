@@ -17,14 +17,21 @@ class DownloadProgressTracker:
         self.callback = callback
         self.current_strategy = None
         self.last_progress = None
+        self.max_percent_reached = 0.0  # Track maximum progress reached
+        self.strategy_attempts = 0
 
     def set_strategy(self, strategy_name: str):
         self.current_strategy = strategy_name
-        if self.callback:
+        self.strategy_attempts += 1
+
+        # Only send "starting" message if this is the first strategy
+        # Otherwise, keep the existing progress
+        if self.callback and self.strategy_attempts == 1:
             self.callback(DownloadProgress(
                 status='starting',
                 current_strategy=strategy_name,
-                message=f'Iniciando download com: {strategy_name}'
+                message=f'Iniciando download com: {strategy_name}',
+                progress_percent=0.0
             ))
 
     def progress_hook(self, d: dict):
@@ -42,6 +49,24 @@ class DownloadProgressTracker:
                 percent = 0.0
                 if total > 0:
                     percent = (downloaded / total) * 100
+
+                # IMPORTANTE: Garantir que o progresso nunca diminua
+                # Mapear progresso de estratégias subsequentes para continuar do último máximo
+                if percent > 0:
+                    # Se estamos em uma nova estratégia (depois de falhas anteriores),
+                    # mapear o progresso para continuar de onde paramos
+                    if self.strategy_attempts > 1:
+                        # Dividir o progresso restante entre as estratégias
+                        remaining_progress = 100.0 - self.max_percent_reached
+                        adjusted_percent = self.max_percent_reached + (percent * remaining_progress / 100.0)
+                        percent = adjusted_percent
+
+                    # Atualizar o máximo apenas se aumentar
+                    if percent > self.max_percent_reached:
+                        self.max_percent_reached = percent
+                    else:
+                        # Se o novo percent for menor, usar o máximo anterior
+                        percent = self.max_percent_reached
 
                 # Formatar velocidade
                 speed_str = None
@@ -77,6 +102,9 @@ class DownloadProgressTracker:
                     self.callback(progress)
 
             elif status == 'finished':
+                # Garantir que chegamos a 100%
+                self.max_percent_reached = 100.0
+
                 progress = DownloadProgress(
                     status='processing',
                     progress_percent=100.0,
