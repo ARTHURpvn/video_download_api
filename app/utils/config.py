@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 def get_user_downloads_dir():
     """Obtém o diretório Downloads do usuário"""
     home = Path.home()
-    downloads_dir = home / "Downloads" / "luiz_da_o_butico"
+    downloads_dir = home / "Downloads" / "Videos Baixados"
     downloads_dir.mkdir(exist_ok=True)
     return str(downloads_dir)
 
