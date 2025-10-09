@@ -1,18 +1,80 @@
 from fastapi import APIRouter
+import os
+import subprocess
+import logging
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["health"])
 
 @router.get("/")
 async def root():
-    return {"message": "YouTube Video Downloader API", "docs": "/docs"}
+    return {
+        "message": "YouTube Video Downloader API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "health": "/health"
+    }
 
 @router.get("/health")
 async def health_check():
     """Endpoint de health check para verificar se a API está funcionando"""
-    return {"status": "healthy", "message": "API está funcionando"}
+    try:
+        # Verificar yt-dlp
+        yt_dlp_version = "unknown"
+        try:
+            result = subprocess.run(['yt-dlp', '--version'], capture_output=True, text=True, timeout=5)
+            yt_dlp_version = result.stdout.strip() if result.returncode == 0 else "error"
+        except:
+            yt_dlp_version = "not installed"
+
+        # Verificar ffmpeg
+        ffmpeg_available = False
+        try:
+            result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True, timeout=5)
+            ffmpeg_available = result.returncode == 0
+        except:
+            ffmpeg_available = False
+
+        # Verificar diretório de downloads
+        from ..utils.config import DOWNLOAD_DIR
+        downloads_dir_exists = os.path.exists(DOWNLOAD_DIR)
+        downloads_dir_writable = os.access(DOWNLOAD_DIR, os.W_OK) if downloads_dir_exists else False
+
+        # Status geral
+        all_healthy = ffmpeg_available and downloads_dir_writable and yt_dlp_version != "not installed"
+
+        return {
+            "status": "healthy" if all_healthy else "degraded",
+            "message": "API está funcionando" if all_healthy else "API funcionando com limitações",
+            "checks": {
+                "yt_dlp": {
+                    "available": yt_dlp_version != "not installed",
+                    "version": yt_dlp_version
+                },
+                "ffmpeg": {
+                    "available": ffmpeg_available
+                },
+                "storage": {
+                    "downloads_dir": DOWNLOAD_DIR,
+                    "exists": downloads_dir_exists,
+                    "writable": downloads_dir_writable
+                }
+            },
+            "environment": {
+                "is_render": os.environ.get('RENDER') == 'true',
+                "port": os.environ.get('PORT', '8000')
+            }
+        }
+    except Exception as e:
+        logger.error(f"Health check error: {e}")
+        return {
+            "status": "unhealthy",
+            "message": f"Error: {str(e)}"
+        }
 
 @router.options("/video/info")
 @router.options("/video/download")
+@router.options("/video/download-stream")
 @router.options("/downloads")
 @router.options("/downloads/{filename}")
 async def options_handler():
