@@ -7,6 +7,7 @@ Usa PyInstaller para empacotar a aplicação
 import PyInstaller.__main__
 import os
 import shutil
+import sys
 from pathlib import Path
 
 def build_executable():
@@ -19,6 +20,9 @@ def build_executable():
         shutil.rmtree('build')
     if os.path.exists('dist'):
         shutil.rmtree('dist')
+
+    # Determinar extensão do executável baseado no SO
+    exe_extension = '.exe' if sys.platform == 'win32' else ''
 
     # Opções do PyInstaller
     pyinstaller_args = [
@@ -42,7 +46,7 @@ def build_executable():
         '--hidden-import=app.utils',
 
         # Incluir diretório app completo
-        '--add-data=app:app',
+        '--add-data=app:app' if sys.platform != 'win32' else '--add-data=app;app',
 
         # Ícone (opcional - descomentar se tiver um ícone)
         # '--icon=icon.ico',
@@ -50,20 +54,61 @@ def build_executable():
 
     # Executar PyInstaller
     print("📦 Empacotando aplicação...")
-    PyInstaller.__main__.run(pyinstaller_args)
+    try:
+        PyInstaller.__main__.run(pyinstaller_args)
+    except Exception as e:
+        print(f"\n❌ Erro ao criar executável: {e}")
+        return False
+
+    # Determinar local de destino baseado no SO
+    if sys.platform == 'win32':
+        # Windows: Desktop do usuário
+        desktop = Path.home() / 'Desktop'
+        dest_folder = desktop / 'YouTubeDownloader'
+    elif sys.platform == 'darwin':
+        # macOS: Applications ou Desktop
+        dest_folder = Path.home() / 'Desktop' / 'YouTubeDownloader'
+    else:
+        # Linux: Home do usuário
+        dest_folder = Path.home() / 'YouTubeDownloader'
+
+    # Criar pasta de destino
+    dest_folder.mkdir(parents=True, exist_ok=True)
+
+    # Mover executável para o destino
+    exe_name = f'YouTubeDownloader{exe_extension}'
+    source_exe = Path('dist') / exe_name
+    dest_exe = dest_folder / exe_name
+
+    if source_exe.exists():
+        print(f"\n📦 Movendo executável para: {dest_folder}")
+        shutil.copy2(source_exe, dest_exe)
+
+        # Tornar executável no Linux/macOS
+        if sys.platform != 'win32':
+            os.chmod(dest_exe, 0o755)
 
     print("\n✅ Build completo!")
-    print(f"📁 Executável criado em: dist/YouTubeDownloader")
-    print("\n📝 Instruções:")
-    print("   1. O executável está na pasta 'dist'")
-    print("   2. Você pode mover o arquivo para qualquer lugar")
-    print("   3. Clique duas vezes para executar")
-    print("\n⚠️  Nota: FFmpeg ainda precisa estar instalado no sistema")
-    print("   - macOS: brew install ffmpeg")
-    print("   - Windows: baixar de ffmpeg.org")
-    print("   - Linux: apt install ffmpeg ou yum install ffmpeg")
+    print(f"📁 Executável criado em: {dest_exe}")
+
+    if sys.platform == 'win32':
+        print(f"\n📍 O executável foi salvo na pasta:")
+        print(f"   {dest_folder}")
+        print("\n📝 Instruções:")
+        print("   1. Vá até a pasta 'YouTubeDownloader' na sua Área de Trabalho")
+        print("   2. Clique duas vezes em 'YouTubeDownloader.exe' para executar")
+        print("   3. Você pode criar um atalho na área de trabalho se desejar")
+    else:
+        print("\n📝 Instruções:")
+        print("   1. O executável está na pasta indicada acima")
+        print("   2. Você pode mover o arquivo para qualquer lugar")
+        print("   3. Clique duas vezes para executar")
+
+    print("\n⚠️  Nota: FFmpeg será baixado automaticamente se necessário")
+
+    return True
 
 
 if __name__ == "__main__":
-    build_executable()
-
+    success = build_executable()
+    sys.exit(0 if success else 1)
