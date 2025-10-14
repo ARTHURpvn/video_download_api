@@ -1,59 +1,19 @@
-# Web Framework
+# YouTube Downloader - Dependências Essenciais
+
+# Web Framework (Backend)
 fastapi==0.115.0
 uvicorn[standard]==0.32.0
 python-multipart==0.0.19
 
-# Data Validation
+# Validação de Dados
 pydantic==2.9.2
-pydantic-settings==2.6.1
 
-# Video Download & Processing
+# Download de Vídeos (ESSENCIAL)
 yt-dlp==2024.12.23
-moviepy==2.1.1
 
-# HTTP & Streaming
-httpx==0.27.2
+# HTTP Client
 requests==2.32.3
 
-# GUI e Executável
+# Build Executável (apenas para desenvolvimento)
 pyinstaller==6.3.0
 
-# Dependências do FastAPI/Uvicorn
-anyio==4.6.2.post1
-certifi==2024.8.30
-charset-normalizer==3.4.0
-click==8.1.7
-h11==0.14.0
-httpcore==1.0.6
-httptools==0.6.4
-idna==3.10
-sniffio==1.3.1
-starlette==0.41.2
-typing-extensions==4.12.2
-urllib3==2.2.3
-uvloop==0.21.0
-watchfiles==0.24.0
-websockets==13.1
-
-# Dependências do MoviePy
-decorator==5.1.1
-imageio==2.36.0
-imageio-ffmpeg==0.5.1
-numpy==2.1.3
-pillow==11.0.0
-proglog==0.1.10
-tqdm==4.67.1
-
-# Dependências do yt-dlp
-brotli==1.1.0
-mutagen==1.47.0
-pycryptodomex==3.21.0
-websockets==13.1
-
-# Dependências do PyInstaller
-altgraph==0.17.4
-packaging==24.2
-pyinstaller-hooks-contrib==2024.10
-
-# Utilitários
-python-dotenv==1.0.1

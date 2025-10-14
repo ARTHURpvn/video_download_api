@@ -61,53 +61,48 @@ def build_executable():
         return False
 
     # Determinar local de destino baseado no SO
-    if sys.platform == 'win32':
-        # Windows: Desktop do usuário
-        desktop = Path.home() / 'Desktop'
-        dest_folder = desktop / 'YouTubeDownloader'
-    elif sys.platform == 'darwin':
-        # macOS: Applications ou Desktop
-        dest_folder = Path.home() / 'Desktop' / 'YouTubeDownloader'
-    else:
-        # Linux: Home do usuário
-        dest_folder = Path.home() / 'YouTubeDownloader'
+    desktop = Path.home() / 'Desktop'
 
-    # Criar pasta de destino
-    dest_folder.mkdir(parents=True, exist_ok=True)
+    if sys.platform == 'win32':
+        # Windows: Copiar direto para a área de trabalho
+        dest_exe = desktop / f'YouTubeDownloader{exe_extension}'
+    elif sys.platform == 'darwin':
+        # macOS: Copiar para área de trabalho
+        dest_exe = desktop / 'YouTubeDownloader'
+    else:
+        # Linux: Copiar para área de trabalho
+        dest_exe = desktop / 'YouTubeDownloader'
 
     # Mover executável para o destino
     exe_name = f'YouTubeDownloader{exe_extension}'
     source_exe = Path('dist') / exe_name
-    dest_exe = dest_folder / exe_name
 
     if source_exe.exists():
-        print(f"\n📦 Movendo executável para: {dest_folder}")
+        print(f"\n📦 Copiando executável para Área de Trabalho...")
         shutil.copy2(source_exe, dest_exe)
 
         # Tornar executável no Linux/macOS
         if sys.platform != 'win32':
             os.chmod(dest_exe, 0o755)
 
-    print("\n✅ Build completo!")
-    print(f"📁 Executável criado em: {dest_exe}")
+        print("\n✅ Build completo!")
+        print(f"📁 Executável criado em: {dest_exe}")
 
-    if sys.platform == 'win32':
-        print(f"\n📍 O executável foi salvo na pasta:")
-        print(f"   {dest_folder}")
-        print("\n📝 Instruções:")
-        print("   1. Vá até a pasta 'YouTubeDownloader' na sua Área de Trabalho")
-        print("   2. Clique duas vezes em 'YouTubeDownloader.exe' para executar")
-        print("   3. Você pode criar um atalho na área de trabalho se desejar")
+        if sys.platform == 'win32':
+            print("\n📝 Instruções:")
+            print("   1. Vá até sua Área de Trabalho")
+            print("   2. Clique duas vezes em 'YouTubeDownloader.exe'")
+            print("   3. Aguarde alguns segundos para o aplicativo abrir")
+        else:
+            print("\n📝 Instruções:")
+            print("   1. Vá até sua Área de Trabalho")
+            print("   2. Clique duas vezes em 'YouTubeDownloader'")
+            print("   3. Aguarde alguns segundos para o aplicativo abrir")
+
+        return True
     else:
-        print("\n📝 Instruções:")
-        print("   1. O executável está na pasta indicada acima")
-        print("   2. Você pode mover o arquivo para qualquer lugar")
-        print("   3. Clique duas vezes para executar")
-
-    print("\n⚠️  Nota: FFmpeg será baixado automaticamente se necessário")
-
-    return True
-
+        print(f"\n❌ Erro: Executável não encontrado em {source_exe}")
+        return False
 
 if __name__ == "__main__":
     success = build_executable()
