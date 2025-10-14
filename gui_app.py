@@ -539,17 +539,71 @@ class YouTubeDownloaderGUI:
         """Iniciar servidor FastAPI em background"""
         def run_server():
             try:
+                # Adicionar o diretório do script ao path para imports funcionarem
+                if getattr(sys, 'frozen', False):
+                    # Executável PyInstaller
+                    application_path = sys._MEIPASS
+                else:
+                    # Modo desenvolvimento
+                    application_path = os.path.dirname(os.path.abspath(__file__))
+
+                # Adicionar ao path
+                if application_path not in sys.path:
+                    sys.path.insert(0, application_path)
+
+                # Importar uvicorn e app
                 import uvicorn
-                from app.main import app
+
+                # Tentar importar o app de diferentes formas
+                try:
+                    from app.main import app
+                except ImportError:
+                    # Se falhar, tentar criar o app diretamente aqui
+                    from fastapi import FastAPI
+                    from fastapi.middleware.cors import CORSMiddleware
+
+                    app = FastAPI(title="YouTube Downloader API")
+
+                    # CORS
+                    app.add_middleware(
+                        CORSMiddleware,
+                        allow_origins=["*"],
+                        allow_credentials=True,
+                        allow_methods=["*"],
+                        allow_headers=["*"],
+                    )
+
+                    # Importar e incluir rotas
+                    try:
+                        from app.routes import video, downloads, health
+                        app.include_router(health.router)
+                        app.include_router(video.router)
+                        app.include_router(downloads.router)
+                    except ImportError as e:
+                        self.queue.put(('server_status', f'error_import: {str(e)}'))
+                        return
 
                 # Configurar diretório de downloads
                 os.environ['DOWNLOAD_DIR'] = str(DOWNLOAD_DIR)
 
                 # Iniciar servidor
                 self.queue.put(('server_status', 'starting'))
-                uvicorn.run(app, host=API_HOST, port=API_PORT, log_level="warning")
+
+                # Configuração do uvicorn para rodar sem logs excessivos
+                config = uvicorn.Config(
+                    app,
+                    host=API_HOST,
+                    port=API_PORT,
+                    log_level="error",
+                    access_log=False
+                )
+                server = uvicorn.Server(config)
+                server.run()
+
             except Exception as e:
                 self.queue.put(('server_status', f'error: {str(e)}'))
+                import traceback
+                traceback.print_exc()
 
         # Iniciar em thread separada
         server_thread = threading.Thread(target=run_server, daemon=True)

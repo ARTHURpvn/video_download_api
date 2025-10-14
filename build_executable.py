@@ -33,31 +33,76 @@ def build_executable():
         '--clean',  # Limpar cache
         '--noconfirm',  # Não pedir confirmação
 
-        # Adicionar módulos necessários
+        # Adicionar módulos necessários - MAIS COMPLETO
         '--hidden-import=uvicorn',
+        '--hidden-import=uvicorn.logging',
+        '--hidden-import=uvicorn.loops',
+        '--hidden-import=uvicorn.loops.auto',
+        '--hidden-import=uvicorn.protocols',
+        '--hidden-import=uvicorn.protocols.http',
+        '--hidden-import=uvicorn.protocols.http.auto',
+        '--hidden-import=uvicorn.protocols.websockets',
+        '--hidden-import=uvicorn.protocols.websockets.auto',
+        '--hidden-import=uvicorn.lifespan',
+        '--hidden-import=uvicorn.lifespan.on',
+
         '--hidden-import=fastapi',
+        '--hidden-import=fastapi.routing',
+        '--hidden-import=fastapi.responses',
+        '--hidden-import=starlette',
+        '--hidden-import=starlette.routing',
+        '--hidden-import=starlette.responses',
+        '--hidden-import=starlette.middleware',
+        '--hidden-import=starlette.middleware.cors',
+
         '--hidden-import=yt_dlp',
-        '--hidden-import=moviepy',
+        '--hidden-import=yt_dlp.extractor',
+        '--hidden-import=yt_dlp.downloader',
+
+        '--hidden-import=pydantic',
+        '--hidden-import=pydantic.fields',
+        '--hidden-import=pydantic.main',
+
+        '--hidden-import=multipart',
+        '--hidden-import=python_multipart',
+
+        # Módulos do app
         '--hidden-import=app',
         '--hidden-import=app.main',
         '--hidden-import=app.routes',
+        '--hidden-import=app.routes.video',
+        '--hidden-import=app.routes.downloads',
+        '--hidden-import=app.routes.health',
         '--hidden-import=app.services',
+        '--hidden-import=app.services.youtube',
+        '--hidden-import=app.services.file_manager',
         '--hidden-import=app.models',
+        '--hidden-import=app.models.schemas',
         '--hidden-import=app.utils',
+        '--hidden-import=app.utils.config',
+        '--hidden-import=app.utils.helpers',
 
-        # Incluir diretório app completo
+        # Incluir diretório app completo como dados
         '--add-data=app:app' if sys.platform != 'win32' else '--add-data=app;app',
 
-        # Ícone (opcional - descomentar se tiver um ícone)
-        # '--icon=icon.ico',
+        # Coletar todos os submódulos
+        '--collect-all=uvicorn',
+        '--collect-all=fastapi',
+        '--collect-all=yt_dlp',
+        '--copy-metadata=uvicorn',
+        '--copy-metadata=fastapi',
+        '--copy-metadata=yt_dlp',
     ]
 
     # Executar PyInstaller
     print("📦 Empacotando aplicação...")
+    print("⚠️  Isso pode levar 10-15 minutos...")
     try:
         PyInstaller.__main__.run(pyinstaller_args)
     except Exception as e:
         print(f"\n❌ Erro ao criar executável: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
     # Determinar local de destino baseado no SO
@@ -91,19 +136,21 @@ def build_executable():
         if sys.platform == 'win32':
             print("\n📝 Instruções:")
             print("   1. Vá até sua Área de Trabalho")
-            print("   2. Clique duas vezes em 'YouTubeDownloader.exe'")
-            print("   3. Aguarde alguns segundos para o aplicativo abrir")
+            print("   2. Duplo clique em 'YouTubeDownloader.exe'")
+            print("   3. Aguarde ~10 segundos para o servidor iniciar")
+            print("   4. Cole um link do YouTube e baixe!")
         else:
             print("\n📝 Instruções:")
             print("   1. Vá até sua Área de Trabalho")
-            print("   2. Clique duas vezes em 'YouTubeDownloader'")
-            print("   3. Aguarde alguns segundos para o aplicativo abrir")
+            print("   2. Duplo clique em 'YouTubeDownloader'")
+            print("   3. Aguarde ~10 segundos para o servidor iniciar")
+            print("   4. Cole um link do YouTube e baixe!")
 
         return True
     else:
         print(f"\n❌ Erro: Executável não encontrado em {source_exe}")
         return False
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     success = build_executable()
     sys.exit(0 if success else 1)
