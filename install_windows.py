@@ -1,443 +1,352 @@
 #!/usr/bin/env python3
 """
 YouTube Downloader - Instalador Automático para Windows
-Instala todas as dependências automaticamente
+Versão corrigida com feedback visual em tempo real
 """
 
 import os
 import sys
 import subprocess
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox, ttk, scrolledtext
 import threading
 import time
 
 class InstallerGUI:
-    def __init__(self, root):
-        self.root = root
+    def __init__(self):
+        self.root = tk.Tk()
         self.root.title("YouTube Downloader - Instalador")
-        self.root.geometry("600x450")
+        self.root.geometry("700x600")
         self.root.resizable(False, False)
 
-        # Configurar estilo
-        self.bg_color = "#1a1a1a"
-        self.fg_color = "#ffffff"
-        self.primary_color = "#FF0000"
-        self.card_bg = "#2d2d2d"
+        # Cores
+        self.bg = "#1a1a1a"
+        self.fg = "#ffffff"
+        self.red = "#FF0000"
+        self.card = "#2d2d2d"
 
-        self.root.configure(bg=self.bg_color)
-
+        self.root.configure(bg=self.bg)
         self.installing = False
-        self.create_widgets()
 
-    def create_widgets(self):
-        """Criar interface do instalador"""
+        self.create_ui()
 
-        # Container principal
-        main_container = tk.Frame(self.root, bg=self.bg_color)
-        main_container.pack(fill=tk.BOTH, expand=True, padx=30, pady=30)
+    def create_ui(self):
+        """Criar interface"""
+        main = tk.Frame(self.root, bg=self.bg)
+        main.pack(fill=tk.BOTH, expand=True, padx=25, pady=25)
 
         # Título
-        title_label = tk.Label(main_container,
-                              text="YouTube Downloader",
-                              font=('Arial', 24, 'bold'),
-                              fg=self.primary_color,
-                              bg=self.bg_color)
-        title_label.pack(pady=(0, 10))
+        tk.Label(main, text="YouTube Downloader",
+                font=('Arial', 26, 'bold'),
+                fg=self.red, bg=self.bg).pack(pady=(0, 5))
 
-        subtitle_label = tk.Label(main_container,
-                                 text="Instalador Automático",
-                                 font=('Arial', 12),
-                                 fg="#999999",
-                                 bg=self.bg_color)
-        subtitle_label.pack(pady=(0, 30))
+        tk.Label(main, text="Instalador Automático",
+                font=('Arial', 11),
+                fg="#999", bg=self.bg).pack(pady=(0, 20))
 
-        # Card de informações
-        info_card = tk.Frame(main_container, bg=self.card_bg)
-        info_card.pack(fill=tk.BOTH, expand=True, pady=(0, 20))
-
-        info_inner = tk.Frame(info_card, bg=self.card_bg)
-        info_inner.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
-
-        info_title = tk.Label(info_inner,
-                             text="📦 O que será instalado:",
-                             font=('Arial', 12, 'bold'),
-                             fg=self.fg_color,
-                             bg=self.card_bg,
-                             anchor='w')
-        info_title.pack(fill=tk.X, pady=(0, 10))
-
-        dependencies = [
-            "✓ yt-dlp (Baixador de vídeos)",
-            "✓ FastAPI (Servidor web)",
-            "✓ Uvicorn (Servidor ASGI)",
-            "✓ FFmpeg (Processador de mídia)",
-            "✓ Todas as dependências necessárias"
-        ]
-
-        for dep in dependencies:
-            dep_label = tk.Label(info_inner,
-                               text=dep,
-                               font=('Arial', 10),
-                               fg="#cccccc",
-                               bg=self.card_bg,
-                               anchor='w')
-            dep_label.pack(fill=tk.X, pady=2)
-
-        # Área de status
-        self.status_frame = tk.Frame(main_container, bg=self.card_bg)
-        self.status_frame.pack(fill=tk.X, pady=(0, 20))
-
-        status_inner = tk.Frame(self.status_frame, bg=self.card_bg)
-        status_inner.pack(fill=tk.X, padx=20, pady=15)
-
-        self.status_label = tk.Label(status_inner,
-                                     text="Pronto para instalar",
-                                     font=('Arial', 10),
-                                     fg="#999999",
-                                     bg=self.card_bg,
-                                     anchor='w')
-        self.status_label.pack(fill=tk.X, pady=(0, 10))
+        # Status atual
+        self.status_lbl = tk.Label(main, text="✓ Pronto para instalar",
+                                   font=('Arial', 11, 'bold'),
+                                   fg=self.fg, bg=self.bg)
+        self.status_lbl.pack(pady=(0, 10))
 
         # Barra de progresso
-        self.progress = ttk.Progressbar(status_inner,
-                                       mode='indeterminate',
-                                       length=400)
-        self.progress.pack(fill=tk.X)
+        self.progressbar = ttk.Progressbar(main, mode='indeterminate', length=550)
+        self.progressbar.pack(pady=(0, 15))
 
-        # Log de instalação
-        self.log_text = tk.Text(status_inner,
-                               height=8,
-                               font=('Consolas', 8),
-                               bg="#1a1a1a",
-                               fg="#00ff00",
-                               relief='flat',
-                               state='disabled')
-        self.log_text.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
+        # Área de log com scroll
+        log_frame = tk.Frame(main, bg=self.card, relief='flat')
+        log_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
+
+        self.log = scrolledtext.ScrolledText(
+            log_frame, height=18, width=75,
+            font=('Consolas', 9),
+            bg="#000", fg="#0f0",
+            insertbackground="#0f0",
+            wrap=tk.WORD,
+            state='disabled'
+        )
+        self.log.pack(fill=tk.BOTH, expand=True, padx=3, pady=3)
 
         # Botões
-        button_frame = tk.Frame(main_container, bg=self.bg_color)
-        button_frame.pack(fill=tk.X)
+        btns = tk.Frame(main, bg=self.bg)
+        btns.pack(fill=tk.X)
 
-        self.install_btn = tk.Button(button_frame,
-                                     text="INSTALAR",
-                                     command=self.start_installation,
-                                     font=('Arial', 12, 'bold'),
-                                     bg=self.primary_color,
-                                     fg="white",
-                                     activebackground='#CC0000',
-                                     relief='flat',
-                                     cursor='hand2',
-                                     padx=30,
-                                     pady=10)
-        self.install_btn.pack(side=tk.LEFT, padx=(0, 10))
+        self.btn_install = tk.Button(
+            btns, text="▶ INSTALAR AGORA",
+            command=self.on_install_click,
+            font=('Arial', 12, 'bold'),
+            bg=self.red, fg="white",
+            activebackground='#CC0000',
+            relief='flat', cursor='hand2',
+            padx=35, pady=12
+        )
+        self.btn_install.pack(side=tk.LEFT, padx=(0, 10))
 
-        cancel_btn = tk.Button(button_frame,
-                              text="CANCELAR",
-                              command=self.root.quit,
-                              font=('Arial', 12),
-                              bg=self.card_bg,
-                              fg="white",
-                              activebackground='#3d3d3d',
-                              relief='flat',
-                              cursor='hand2',
-                              padx=30,
-                              pady=10)
-        cancel_btn.pack(side=tk.LEFT)
+        tk.Button(
+            btns, text="✕ SAIR",
+            command=self.root.quit,
+            font=('Arial', 12),
+            bg=self.card, fg="white",
+            activebackground='#3d3d3d',
+            relief='flat', cursor='hand2',
+            padx=35, pady=12
+        ).pack(side=tk.LEFT)
 
-    def log(self, message):
-        """Adicionar mensagem ao log"""
-        self.log_text.config(state='normal')
-        self.log_text.insert(tk.END, f"{message}\n")
-        self.log_text.see(tk.END)
-        self.log_text.config(state='disabled')
-        self.root.update()
+    def write(self, text):
+        """Escrever no log"""
+        self.log.config(state='normal')
+        self.log.insert(tk.END, text + '\n')
+        self.log.see(tk.END)
+        self.log.config(state='disabled')
+        self.root.update_idletasks()
 
-    def update_status(self, status):
+    def status(self, text):
         """Atualizar status"""
-        self.status_label.config(text=status)
-        self.root.update()
+        self.status_lbl.config(text=text)
+        self.root.update_idletasks()
 
-    def start_installation(self):
-        """Iniciar instalação"""
+    def on_install_click(self):
+        """Botão instalar clicado"""
         if self.installing:
             return
 
-        # Confirmar com usuário
-        result = messagebox.askyesno(
+        if not messagebox.askyesno(
             "Confirmar Instalação",
-            "Deseja instalar o YouTube Downloader e todas as suas dependências?\n\n"
-            "Isso pode levar alguns minutos.",
+            "Instalar YouTube Downloader e todas as dependências?\n\n"
+            "Isso levará alguns minutos.",
             icon='question'
-        )
-
-        if not result:
+        ):
             return
 
         self.installing = True
-        self.install_btn.config(state='disabled', text="INSTALANDO...")
-        self.progress.start()
+        self.btn_install.config(state='disabled', text="⏳ INSTALANDO...")
+        self.progressbar.start(8)
 
-        # Executar instalação em thread separada
-        thread = threading.Thread(target=self.run_installation, daemon=True)
-        thread.start()
+        threading.Thread(target=self.install, daemon=True).start()
 
-    def run_installation(self):
-        """Executar processo de instalação"""
+    def exec_cmd(self, cmd, desc):
+        """Executar comando com output em tempo real"""
+        self.write(f"\n▸ {desc}")
         try:
-            self.log("=" * 50)
-            self.log("INICIANDO INSTALAÇÃO")
-            self.log("=" * 50)
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1
+            )
 
-            # 1. Verificar Python
-            self.update_status("Verificando Python...")
-            self.log("\n[1/6] Verificando instalação do Python...")
+            for line in proc.stdout:
+                line = line.strip()
+                if line and not line.startswith("WARNING"):
+                    self.write(f"  {line}")
+
+            proc.wait()
+            return proc.returncode == 0
+
+        except Exception as e:
+            self.write(f"  ✗ ERRO: {e}")
+            return False
+
+    def install(self):
+        """Processo principal de instalação"""
+        try:
+            self.write("=" * 65)
+            self.write("  INSTALAÇÃO DO YOUTUBE DOWNLOADER")
+            self.write("=" * 65)
+
+            # ETAPA 1: Python
+            self.status("⏳ [1/6] Verificando Python...")
+            self.write("\n[ETAPA 1/6] Verificando Python")
 
             try:
-                python_version = subprocess.check_output(
+                ver = subprocess.check_output(
                     [sys.executable, "--version"],
                     stderr=subprocess.STDOUT
                 ).decode().strip()
-                self.log(f"✓ Python encontrado: {python_version}")
-            except Exception as e:
-                self.log(f"✗ Erro ao verificar Python: {e}")
-                self.show_error("Python não encontrado! Por favor, instale o Python 3.8 ou superior.")
-                return
+                self.write(f"✓ Encontrado: {ver}")
+            except:
+                self.write("✗ Python não encontrado!")
+                raise Exception("Python não instalado")
 
-            time.sleep(0.5)
+            time.sleep(0.4)
 
-            # 2. Atualizar pip
-            self.update_status("Atualizando pip...")
-            self.log("\n[2/6] Atualizando pip...")
+            # ETAPA 2: pip
+            self.status("⏳ [2/6] Atualizando pip...")
+            self.write("\n[ETAPA 2/6] Atualizando pip")
 
-            try:
-                subprocess.check_call(
-                    [sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE
-                )
-                self.log("✓ pip atualizado com sucesso")
-            except Exception as e:
-                self.log(f"⚠ Aviso ao atualizar pip: {e}")
+            self.exec_cmd(
+                [sys.executable, "-m", "pip", "install", "--upgrade", "pip", "--quiet"],
+                "Atualizando pip"
+            )
+            self.write("✓ pip atualizado")
 
-            time.sleep(0.5)
+            time.sleep(0.4)
 
-            # 3. Instalar dependências do requirements.txt
-            self.update_status("Instalando dependências Python...")
-            self.log("\n[3/6] Instalando dependências Python...")
+            # ETAPA 3: Dependências
+            self.status("⏳ [3/6] Instalando dependências...")
+            self.write("\n[ETAPA 3/6] Instalando dependências Python")
 
-            requirements_file = os.path.join(os.path.dirname(__file__), "requirements.txt")
+            packages = [
+                ("yt-dlp", "Baixador de vídeos do YouTube"),
+                ("fastapi", "Framework web"),
+                ("uvicorn[standard]", "Servidor ASGI"),
+                ("python-multipart", "Upload de arquivos"),
+                ("requests", "Cliente HTTP"),
+                ("pydantic", "Validação de dados")
+            ]
 
-            if os.path.exists(requirements_file):
-                try:
-                    self.log("Lendo requirements.txt...")
-                    process = subprocess.Popen(
-                        [sys.executable, "-m", "pip", "install", "-r", requirements_file],
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        text=True
-                    )
+            for pkg, desc in packages:
+                self.write(f"\n  → Instalando {pkg} ({desc})")
+                if self.exec_cmd(
+                    [sys.executable, "-m", "pip", "install", pkg, "--quiet"],
+                    f"pip install {pkg}"
+                ):
+                    self.write(f"  ✓ {pkg} instalado")
+                else:
+                    self.write(f"  ⚠ Problema com {pkg} (continuando...)")
 
-                    for line in process.stdout:
-                        line = line.strip()
-                        if line:
-                            self.log(f"  {line}")
+            time.sleep(0.4)
 
-                    process.wait()
-
-                    if process.returncode == 0:
-                        self.log("✓ Dependências Python instaladas com sucesso")
-                    else:
-                        self.log("⚠ Algumas dependências podem não ter sido instaladas")
-
-                except Exception as e:
-                    self.log(f"✗ Erro ao instalar dependências: {e}")
-                    self.show_error(f"Erro ao instalar dependências Python: {e}")
-                    return
-            else:
-                self.log("⚠ Arquivo requirements.txt não encontrado")
-                self.log("Instalando dependências manualmente...")
-
-                deps = [
-                    "yt-dlp",
-                    "fastapi",
-                    "uvicorn[standard]",
-                    "python-multipart",
-                    "requests"
-                ]
-
-                for dep in deps:
-                    try:
-                        self.log(f"  Instalando {dep}...")
-                        subprocess.check_call(
-                            [sys.executable, "-m", "pip", "install", dep],
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE
-                        )
-                        self.log(f"  ✓ {dep} instalado")
-                    except Exception as e:
-                        self.log(f"  ✗ Erro ao instalar {dep}: {e}")
-
-            time.sleep(0.5)
-
-            # 4. Verificar/Instalar FFmpeg
-            self.update_status("Verificando FFmpeg...")
-            self.log("\n[4/6] Verificando FFmpeg...")
+            # ETAPA 4: FFmpeg
+            self.status("⏳ [4/6] Configurando FFmpeg...")
+            self.write("\n[ETAPA 4/6] Verificando FFmpeg")
 
             try:
                 subprocess.check_output(
                     ["ffmpeg", "-version"],
                     stderr=subprocess.STDOUT
                 )
-                self.log("✓ FFmpeg já está instalado")
-            except FileNotFoundError:
-                self.log("⚠ FFmpeg não encontrado no sistema")
-                self.log("Tentando instalar FFmpeg via yt-dlp...")
+                self.write("✓ FFmpeg já instalado no sistema")
+            except:
+                self.write("⚠ FFmpeg não encontrado")
+                self.write("  (Será baixado automaticamente quando necessário)")
 
-                try:
-                    # Instalar ffmpeg-downloader
-                    subprocess.check_call(
-                        [sys.executable, "-m", "pip", "install", "ffmpeg-downloader"],
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE
-                    )
-                    self.log("✓ ffmpeg-downloader instalado")
+            time.sleep(0.4)
 
-                    # Baixar FFmpeg
-                    self.log("Baixando FFmpeg... (isso pode levar alguns minutos)")
-                    subprocess.check_call(
-                        [sys.executable, "-m", "ffmpeg_downloader"],
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE
-                    )
-                    self.log("✓ FFmpeg instalado com sucesso")
-                except Exception as e:
-                    self.log(f"⚠ Não foi possível instalar FFmpeg automaticamente: {e}")
-                    self.log("Por favor, instale o FFmpeg manualmente de: https://ffmpeg.org/download.html")
+            # ETAPA 5: Diretórios
+            self.status("⏳ [5/6] Criando diretórios...")
+            self.write("\n[ETAPA 5/6] Configurando diretórios")
+
+            dl_dir = os.path.join(
+                os.path.expanduser("~"),
+                "Downloads",
+                "Videos Baixados"
+            )
+            os.makedirs(dl_dir, exist_ok=True)
+            self.write(f"✓ Pasta criada: {dl_dir}")
+
+            time.sleep(0.4)
+
+            # ETAPA 6: Build do executável
+            self.status("⏳ [6/6] Criando executável...")
+            self.write("\n[ETAPA 6/6] Compilando aplicativo (.exe)")
+            self.write("  ⚠ Esta etapa pode levar 5-10 minutos!")
+            self.write("  Por favor, aguarde...")
+
+            # Instalar PyInstaller
+            self.write("\n  → Instalando PyInstaller")
+            if self.exec_cmd(
+                [sys.executable, "-m", "pip", "install", "pyinstaller", "--quiet"],
+                "pip install pyinstaller"
+            ):
+                self.write("  ✓ PyInstaller instalado")
 
             time.sleep(0.5)
 
-            # 5. Criar diretório de downloads
-            self.update_status("Configurando diretórios...")
-            self.log("\n[5/6] Configurando diretórios...")
+            # Executar build
+            build_file = os.path.join(os.path.dirname(__file__), "build_executable.py")
 
-            try:
-                download_dir = os.path.join(os.path.expanduser("~"), "Downloads", "Videos Baixados")
-                os.makedirs(download_dir, exist_ok=True)
-                self.log(f"✓ Diretório de downloads criado: {download_dir}")
-            except Exception as e:
-                self.log(f"⚠ Erro ao criar diretório: {e}")
+            if os.path.exists(build_file):
+                self.write("\n  → Compilando aplicativo...")
+                self.write("  (Isso levará vários minutos...)")
 
-            # Finalizar
-            self.log("\n" + "=" * 50)
-            self.log("INSTALAÇÃO CONCLUÍDA COM SUCESSO!")
-            self.log("=" * 50)
+                if self.exec_cmd(
+                    [sys.executable, build_file],
+                    "Criando YouTubeDownloader.exe"
+                ):
+                    self.write("\n  ✓✓✓ EXECUTÁVEL CRIADO COM SUCESSO! ✓✓✓")
 
-            # 6. Perguntar se deseja criar o executável
-            self.update_status("Instalação concluída! Preparando build...")
-            self.log("\n[6/6] Criando executável (.exe)...")
-            self.log("Isso pode levar alguns minutos...")
-
-            try:
-                # Instalar PyInstaller se necessário
-                self.log("\nInstalando PyInstaller...")
-                subprocess.check_call(
-                    [sys.executable, "-m", "pip", "install", "pyinstaller"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE
-                )
-                self.log("✓ PyInstaller instalado")
-
-                time.sleep(0.5)
-
-                # Executar build
-                self.log("\n🔨 Criando executável...")
-                self.log("Por favor, aguarde. Isso pode levar de 5 a 10 minutos...")
-
-                build_script = os.path.join(os.path.dirname(__file__), "build_executable.py")
-
-                if os.path.exists(build_script):
-                    process = subprocess.Popen(
-                        [sys.executable, build_script],
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        text=True
+                    desktop = os.path.join(
+                        os.path.expanduser("~"),
+                        "Desktop",
+                        "YouTubeDownloader"
                     )
-
-                    for line in process.stdout:
-                        line = line.strip()
-                        if line:
-                            self.log(f"  {line}")
-
-                    process.wait()
-
-                    if process.returncode == 0:
-                        self.log("\n✓ Executável criado com sucesso!")
-                        self.log("📁 Local: Área de Trabalho/YouTubeDownloader/YouTubeDownloader.exe")
-                    else:
-                        self.log("\n⚠ Erro ao criar executável")
-                        self.log("Você pode tentar criar manualmente executando: python build_executable.py")
+                    self.write(f"  📁 Local: {desktop}")
+                    self.write(f"  📄 Arquivo: YouTubeDownloader.exe")
                 else:
-                    self.log("⚠ Arquivo build_executable.py não encontrado")
+                    self.write("\n  ⚠ Erro ao criar executável")
+                    self.write("  Você pode executar: python gui_app.py")
+            else:
+                self.write("  ⚠ build_executable.py não encontrado")
+                self.write("  Você pode executar: python gui_app.py")
 
-            except Exception as e:
-                self.log(f"\n⚠ Erro ao criar executável: {e}")
-                self.log("Você pode tentar criar manualmente executando: python build_executable.py")
+            # FINALIZAÇÃO
+            self.write("\n" + "=" * 65)
+            self.write("  ✓✓✓ INSTALAÇÃO CONCLUÍDA COM SUCESSO! ✓✓✓")
+            self.write("=" * 65)
+            self.write("\n✅ YouTube Downloader está pronto para uso!")
+            self.write("📁 Verifique a pasta 'YouTubeDownloader' na Área de Trabalho")
+            self.write("\n" + "=" * 65)
 
-            self.log("\n" + "=" * 50)
-            self.log("PROCESSO COMPLETO!")
-            self.log("=" * 50)
-            self.log("\n✅ Aplicativo instalado e executável criado!")
-            self.log("📁 Verifique a pasta 'YouTubeDownloader' na sua Área de Trabalho")
+            self.status("✓ Instalação completa!")
+            self.progressbar.stop()
 
-            self.update_status("✓ Tudo pronto! Executável criado na Área de Trabalho")
-            self.progress.stop()
-
-            self.root.after(100, self.show_success)
+            self.root.after(500, self.show_done)
 
         except Exception as e:
-            self.log(f"\n✗ ERRO FATAL: {e}")
-            self.update_status("✗ Erro na instalação")
-            self.progress.stop()
-            self.show_error(f"Erro durante a instalação: {e}")
+            self.write(f"\n\n✗✗✗ ERRO FATAL ✗✗✗")
+            self.write(f"✗ {str(e)}")
+            self.status("✗ Erro na instalação")
+            self.progressbar.stop()
+
+            self.root.after(100, lambda: messagebox.showerror(
+                "Erro na Instalação",
+                f"Ocorreu um erro durante a instalação:\n\n{e}"
+            ))
 
         finally:
             self.installing = False
-            self.install_btn.config(state='normal', text="INSTALAR")
+            self.btn_install.config(state='normal', text="▶ INSTALAR AGORA")
 
-    def show_success(self):
-        """Mostrar mensagem de sucesso"""
-        result = messagebox.showinfo(
-            "Instalação Concluída",
-            "YouTube Downloader instalado com sucesso!\n\n"
-            "Você pode agora executar o aplicativo através do arquivo gui_app.py\n\n"
+    def show_done(self):
+        """Mostrar conclusão"""
+        resp = messagebox.askyesno(
+            "✓ Instalação Concluída!",
+            "YouTube Downloader foi instalado com sucesso!\n\n"
             "Deseja abrir o aplicativo agora?",
-            icon='info',
-            type='yesno'
+            icon='info'
         )
 
-        if result == 'yes':
-            # Executar o aplicativo
+        if resp:
             try:
-                gui_path = os.path.join(os.path.dirname(__file__), "gui_app.py")
-                subprocess.Popen([sys.executable, gui_path])
+                # Tentar abrir o .exe primeiro
+                exe = os.path.join(
+                    os.path.expanduser("~"),
+                    "Desktop",
+                    "YouTubeDownloader",
+                    "YouTubeDownloader.exe"
+                )
+
+                if os.path.exists(exe):
+                    os.startfile(exe)
+                else:
+                    # Senão, abrir o Python script
+                    gui = os.path.join(os.path.dirname(__file__), "gui_app.py")
+                    subprocess.Popen([sys.executable, gui])
+
                 self.root.quit()
+
             except Exception as e:
-                messagebox.showerror("Erro", f"Erro ao abrir aplicativo: {e}")
-        else:
-            self.root.quit()
+                messagebox.showerror("Erro", f"Erro ao abrir:\n{e}")
 
-    def show_error(self, message):
-        """Mostrar mensagem de erro"""
-        self.root.after(100, lambda: messagebox.showerror("Erro na Instalação", message))
-
-
-def main():
-    """Função principal"""
-    root = tk.Tk()
-    app = InstallerGUI(root)
-    root.mainloop()
+    def run(self):
+        """Executar"""
+        self.root.mainloop()
 
 
 if __name__ == "__main__":
-    main()
+    app = InstallerGUI()
+    app.run()
+
