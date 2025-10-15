@@ -54,6 +54,7 @@ def build_executable():
         '--hidden-import=starlette.responses',
         '--hidden-import=starlette.middleware',
         '--hidden-import=starlette.middleware.cors',
+        '--hidden-import=starlette.applications',
 
         '--hidden-import=yt_dlp',
         '--hidden-import=yt_dlp.extractor',
@@ -65,6 +66,14 @@ def build_executable():
 
         '--hidden-import=multipart',
         '--hidden-import=python_multipart',
+
+        # Dependências críticas do uvicorn
+        '--hidden-import=asyncio',
+        '--hidden-import=h11',
+        '--hidden-import=httptools',
+        '--hidden-import=websockets',
+        '--hidden-import=watchfiles',
+        '--hidden-import=click',
 
         # Módulos do app
         '--hidden-import=app',
@@ -88,10 +97,22 @@ def build_executable():
         # Coletar todos os submódulos
         '--collect-all=uvicorn',
         '--collect-all=fastapi',
+        '--collect-all=starlette',
         '--collect-all=yt_dlp',
+        '--collect-all=h11',
+        '--collect-all=httptools',
+
+        # Copiar metadados
         '--copy-metadata=uvicorn',
         '--copy-metadata=fastapi',
+        '--copy-metadata=starlette',
         '--copy-metadata=yt_dlp',
+        '--copy-metadata=h11',
+        '--copy-metadata=httptools',
+
+        # Recursivo para pegar tudo
+        '--recursive-copy-metadata=uvicorn',
+        '--recursive-copy-metadata=fastapi',
     ]
 
     # Executar PyInstaller

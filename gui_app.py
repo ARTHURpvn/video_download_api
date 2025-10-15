@@ -13,7 +13,6 @@ import sys
 import time
 from pathlib import Path
 import requests
-import subprocess
 import re
 import json
 
@@ -323,7 +322,7 @@ class YouTubeDownloaderGUI:
 
         # Barra de progresso moderna
         self.progress_card = tk.Frame(main_container, bg=self.card_bg, relief='flat')
-        self.progress_card.pack(fill=tk.X, pady=(0, 15))
+        # NÃO fazer pack aqui - só mostrar durante download
 
         progress_inner = tk.Frame(self.progress_card, bg=self.card_bg)
         progress_inner.pack(fill=tk.X, padx=20, pady=15)
@@ -353,94 +352,15 @@ class YouTubeDownloaderGUI:
                                       bg=self.card_bg)
         self.progress_label.pack(anchor=tk.W, pady=(5, 0))
 
-        # Card de arquivos baixados
-        self.downloads_card = tk.Frame(main_container, bg=self.card_bg, relief='flat')
-        self.downloads_card.pack(fill=tk.BOTH, expand=True)
-
-        downloads_inner = tk.Frame(self.downloads_card, bg=self.card_bg)
-        downloads_inner.pack(fill=tk.BOTH, expand=True, padx=20, pady=15)
-
-        downloads_header_frame = tk.Frame(downloads_inner, bg=self.card_bg)
-        downloads_header_frame.pack(fill=tk.X, pady=(0, 10))
-
-        downloads_label = tk.Label(downloads_header_frame,
-                                  text="📁 Arquivos Baixados",
-                                  font=('SF Pro Display', 14, 'bold'),
-                                  fg=self.fg_color,
-                                  bg=self.card_bg)
-        downloads_label.pack(side=tk.LEFT)
-
-        # Lista de downloads com estilo
-        self.downloads_listbox = tk.Listbox(downloads_inner,
-                                           height=5,
-                                           font=('SF Pro Display', 11),
-                                           bg="#1a1a1a",
-                                           fg=self.fg_color,
-                                           selectbackground=self.accent_color,
-                                           selectforeground="white",
-                                           relief='flat',
-                                           bd=0,
-                                           highlightthickness=0)
-        self.downloads_listbox.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
-
-        # Botões de ação
-        btn_frame = tk.Frame(downloads_inner, bg=self.card_bg)
-        btn_frame.pack(fill=tk.X)
-
-        refresh_btn = tk.Button(btn_frame,
-                              text="🔄 Atualizar",
-                              command=self.refresh_downloads,
-                              font=('SF Pro Display', 10),
-                              bg=self.secondary_color,
-                              fg=self.fg_color,
-                              activebackground='#3d3d3d',
-                              activeforeground=self.fg_color,
-                              relief='flat',
-                              bd=0,
-                              cursor='hand2',
-                              padx=15,
-                              pady=8)
-        refresh_btn.pack(side=tk.LEFT, padx=(0, 10))
-
-        folder_btn = tk.Button(btn_frame,
-                             text="📂 Abrir Pasta",
-                             command=self.open_downloads_folder,
-                             font=('SF Pro Display', 10),
-                             bg=self.secondary_color,
-                             fg=self.fg_color,
-                             activebackground='#3d3d3d',
-                             activeforeground=self.fg_color,
-                             relief='flat',
-                             bd=0,
-                             cursor='hand2',
-                             padx=15,
-                             pady=8)
-        folder_btn.pack(side=tk.LEFT, padx=(0, 10))
-
-        play_btn = tk.Button(btn_frame,
-                           text="▶️ Reproduzir",
-                           command=self.open_selected_file,
-                           font=('SF Pro Display', 10),
-                           bg=self.secondary_color,
-                           fg=self.fg_color,
-                           activebackground='#3d3d3d',
-                           activeforeground=self.fg_color,
-                           relief='flat',
-                           bd=0,
-                           cursor='hand2',
-                           padx=15,
-                           pady=8)
-        play_btn.pack(side=tk.LEFT)
-
-        # Status do servidor (footer)
+        # Status do servidor (footer) - movido para cá
         footer_frame = tk.Frame(main_container, bg=self.bg_color)
         footer_frame.pack(fill=tk.X, pady=(15, 0))
 
         self.server_status_var = tk.StringVar(value="⚪ Iniciando servidor...")
         server_status = tk.Label(footer_frame,
                                textvariable=self.server_status_var,
-                               font=('SF Pro Display', 9),
-                               fg='#666666',
+                               font=('SF Pro Display', 11, 'bold'),
+                               fg='#3ea6ff',
                                bg=self.bg_color)
         server_status.pack()
 
@@ -551,43 +471,67 @@ class YouTubeDownloaderGUI:
                 if application_path not in sys.path:
                     sys.path.insert(0, application_path)
 
-                # Importar uvicorn e app
-                import uvicorn
-
-                # Tentar importar o app de diferentes formas
-                try:
-                    from app.main import app
-                except ImportError:
-                    # Se falhar, tentar criar o app diretamente aqui
-                    from fastapi import FastAPI
-                    from fastapi.middleware.cors import CORSMiddleware
-
-                    app = FastAPI(title="YouTube Downloader API")
-
-                    # CORS
-                    app.add_middleware(
-                        CORSMiddleware,
-                        allow_origins=["*"],
-                        allow_credentials=True,
-                        allow_methods=["*"],
-                        allow_headers=["*"],
-                    )
-
-                    # Importar e incluir rotas
-                    try:
-                        from app.routes import video, downloads, health
-                        app.include_router(health.router)
-                        app.include_router(video.router)
-                        app.include_router(downloads.router)
-                    except ImportError as e:
-                        self.queue.put(('server_status', f'error_import: {str(e)}'))
-                        return
-
-                # Configurar diretório de downloads
+                # Configurar diretório de downloads ANTES de importar
                 os.environ['DOWNLOAD_DIR'] = str(DOWNLOAD_DIR)
 
-                # Iniciar servidor
-                self.queue.put(('server_status', 'starting'))
+                # Importar FastAPI e criar app diretamente aqui para evitar problemas de import
+                from fastapi import FastAPI
+                from fastapi.middleware.cors import CORSMiddleware
+                import uvicorn
+
+                # Criar app FastAPI
+                app = FastAPI(
+                    title="YouTube Downloader API",
+                    version="1.0.0",
+                    description="API para download de vídeos do YouTube"
+                )
+
+                # CORS
+                app.add_middleware(
+                    CORSMiddleware,
+                    allow_origins=["*"],
+                    allow_credentials=True,
+                    allow_methods=["*"],
+                    allow_headers=["*"],
+                )
+
+                # Importar e registrar rotas manualmente
+                try:
+                    # Tentar importar rotas
+                    import importlib.util
+
+                    # Caminho para os módulos de rotas
+                    app_path = os.path.join(application_path, 'app')
+                    routes_path = os.path.join(app_path, 'routes')
+
+                    # Adicionar ao sys.path
+                    if app_path not in sys.path:
+                        sys.path.insert(0, app_path)
+
+                    # Importar rotas
+                    from app.routes import health, video, downloads
+
+                    # Registrar rotas
+                    app.include_router(health.router)
+                    app.include_router(video.router)
+                    app.include_router(downloads.router)
+
+                    self.queue.put(('server_status', 'starting'))
+
+                except ImportError as e:
+                    # Se falhar, criar rotas básicas inline
+                    from fastapi import APIRouter
+                    from fastapi.responses import JSONResponse
+
+                    health_router = APIRouter()
+
+                    @health_router.get("/health")
+                    async def health_check():
+                        return {"status": "ok", "message": "Server is running"}
+
+                    app.include_router(health_router)
+
+                    self.queue.put(('server_status', f'warning: rotas limitadas - {str(e)}'))
 
                 # Configuração do uvicorn para rodar sem logs excessivos
                 config = uvicorn.Config(
@@ -603,6 +547,7 @@ class YouTubeDownloaderGUI:
             except Exception as e:
                 self.queue.put(('server_status', f'error: {str(e)}'))
                 import traceback
+                print("Erro ao iniciar servidor:")
                 traceback.print_exc()
 
         # Iniciar em thread separada
@@ -622,7 +567,7 @@ class YouTubeDownloaderGUI:
                 if response.status_code == 200:
                     self.server_ready = True
                     self.queue.put(('server_status', 'ready'))
-                    self.queue.put(('refresh_downloads', None))
+                    # Remover refresh_downloads pois não existe mais
                     return
             except:
                 pass
@@ -669,8 +614,8 @@ class YouTubeDownloaderGUI:
         self.progress_var.set(0)
         self.progress_label.config(text="0%")
 
-        # Mostrar barra de progresso
-        self.progress_card.pack(fill=tk.X, pady=(0, 15), before=self.downloads_card)
+        # Mostrar barra de progresso ANTES do botão de download
+        self.progress_card.pack(fill=tk.X, pady=(0, 15), before=self.download_btn)
 
         def download():
             try:
@@ -721,6 +666,8 @@ class YouTubeDownloaderGUI:
                                             self.queue.put(('status', message))
                                         elif status == 'processing':
                                             self.queue.put(('status', 'Processando vídeo...'))
+                                        elif status == 'converting':
+                                            self.queue.put(('status', 'Convertendo para MP4...'))
                                         elif status == 'completed':
                                             self.queue.put(('status', 'Download concluído!'))
                                             self.queue.put(('progress', 100))
@@ -734,6 +681,10 @@ class YouTubeDownloaderGUI:
                 else:
                     self.queue.put(('error', f"Erro no servidor: {response.status_code}"))
 
+            except requests.exceptions.Timeout:
+                self.queue.put(('error', "Download demorou muito tempo e foi cancelado. Tente novamente."))
+            except requests.exceptions.ConnectionError:
+                self.queue.put(('error', "Erro de conexão com o servidor. Verifique sua internet."))
             except Exception as e:
                 self.queue.put(('error', f"Erro ao baixar: {str(e)}"))
             finally:
@@ -741,48 +692,6 @@ class YouTubeDownloaderGUI:
                 self.queue.put(('download_finished', None))
 
         threading.Thread(target=download, daemon=True).start()
-
-    def refresh_downloads(self):
-        """Atualizar lista de downloads"""
-        def fetch_downloads():
-            try:
-                response = requests.get(f"{API_BASE_URL}/downloads", timeout=10)
-                if response.status_code == 200:
-                    downloads = response.json()
-                    self.queue.put(('downloads_list', downloads))
-            except Exception as e:
-                print(f"Erro ao atualizar downloads: {e}")
-
-        threading.Thread(target=fetch_downloads, daemon=True).start()
-
-    def open_downloads_folder(self):
-        """Abrir pasta de downloads"""
-        if sys.platform == 'darwin':  # macOS
-            subprocess.run(['open', str(DOWNLOAD_DIR)])
-        elif sys.platform == 'win32':  # Windows
-            os.startfile(str(DOWNLOAD_DIR))
-        else:  # Linux
-            subprocess.run(['xdg-open', str(DOWNLOAD_DIR)])
-
-    def open_selected_file(self):
-        """Abrir arquivo selecionado"""
-        selection = self.downloads_listbox.curselection()
-        if not selection:
-            messagebox.showinfo("Info", "Selecione um arquivo para abrir")
-            return
-
-        filename = self.downloads_listbox.get(selection[0])
-        filepath = DOWNLOAD_DIR / filename
-
-        if filepath.exists():
-            if sys.platform == 'darwin':
-                subprocess.run(['open', str(filepath)])
-            elif sys.platform == 'win32':
-                os.startfile(str(filepath))
-            else:
-                subprocess.run(['xdg-open', str(filepath)])
-        else:
-            messagebox.showerror("Erro", "Arquivo não encontrado")
 
     def process_queue(self):
         """Processar mensagens da fila"""
@@ -850,10 +759,6 @@ class YouTubeDownloaderGUI:
                         self.download_btn.config(state='normal')
                     else:
                         self.download_btn.config(state='disabled')
-                    self.refresh_downloads()
-
-                elif msg_type == 'downloads_list':
-                    self.update_downloads_list(data)
 
                 elif msg_type == 'error':
                     self.status_var.set("❌ Erro no download")
@@ -865,9 +770,6 @@ class YouTubeDownloaderGUI:
                     else:
                         self.download_btn.config(state='disabled')
                     self.downloading = False
-
-                elif msg_type == 'refresh_downloads':
-                    self.refresh_downloads()
 
         except queue.Empty:
             pass
@@ -918,19 +820,6 @@ class YouTubeDownloaderGUI:
                           f"Download concluído!\n\n{title}\n\n📁 Arquivo salvo em: Videos Baixados",
                           icon='info')
 
-    def update_downloads_list(self, downloads):
-        """Atualizar lista de arquivos baixados"""
-        self.downloads_listbox.delete(0, tk.END)
-
-        if isinstance(downloads, list):
-            for item in downloads:
-                if isinstance(item, dict):
-                    filename = item.get('filename', '')
-                else:
-                    filename = str(item)
-
-                if filename:
-                    self.downloads_listbox.insert(tk.END, filename)
 
     def on_closing(self):
         """Lidar com fechamento da aplicação"""
