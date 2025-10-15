@@ -153,9 +153,12 @@ def convert_to_mp4(input_file: str, target_filename: str) -> str:
 def validate_video_file(file_path: str) -> bool:
     """Valida se o arquivo é um vídeo real com duração > 0 e movimento"""
     try:
+        # 🔧 Usar o localizador de FFprobe
+        ffprobe_cmd = get_ffprobe_path()
+
         # Verificar duração básica
         cmd_duration = [
-            'ffprobe',
+            ffprobe_cmd,  # 🔧 MODIFICADO
             '-v', 'quiet',
             '-show_entries', 'format=duration',
             '-of', 'csv=p=0',
@@ -179,7 +182,7 @@ def validate_video_file(file_path: str) -> bool:
 
         # Verificar se tem frames de vídeo reais (não apenas uma imagem)
         cmd_frames = [
-            'ffprobe',
+            ffprobe_cmd,  # 🔧 MODIFICADO
             '-v', 'quiet',
             '-select_streams', 'v:0',
             '-show_entries', 'stream=nb_frames,r_frame_rate',
