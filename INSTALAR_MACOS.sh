@@ -190,11 +190,11 @@ fi
 
 echo ""
 read -p "Pressione ENTER para sair..."
-@echo off
-REM ============================================================================
-REM YouTube Downloader - Instalador Automático Windows
-REM Este script instala tudo automaticamente, incluindo Python se necessário
-REM ============================================================================
+
+# ============================================================================
+# YouTube Downloader - Instalador Automático Windows
+# Este script instala tudo automaticamente, incluindo Python se necessário
+# ============================================================================
 
 title YouTube Downloader - Instalador
 color 0A
@@ -372,3 +372,147 @@ exit /b 1
 echo.
 pause
 
+# Script de Instalação Automática - YouTube Downloader (macOS)
+# Este script instala todas as dependências necessárias, incluindo o FFmpeg
+
+echo "=============================================="
+echo "🚀 YouTube Downloader - Instalação Automática"
+echo "=============================================="
+echo ""
+
+# Verificar se está no macOS
+if [[ "$OSTYPE" != "darwin"* ]]; then
+    echo "❌ Este script é apenas para macOS!"
+    echo "   Use INSTALAR_WINDOWS.bat no Windows"
+    exit 1
+fi
+
+# Função para verificar se um comando existe
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# 1. Verificar/Instalar Homebrew
+echo "📦 Verificando Homebrew..."
+if ! command_exists brew; then
+    echo "   ⚠️  Homebrew não encontrado. Instalando..."
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+    # Adicionar Homebrew ao PATH
+    if [[ -d "/opt/homebrew/bin" ]]; then
+        echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+        eval "$(/opt/homebrew/bin/brew shellenv)"
+    fi
+
+    echo "   ✅ Homebrew instalado!"
+else
+    echo "   ✅ Homebrew já instalado"
+fi
+
+# 2. Atualizar Homebrew
+echo ""
+echo "🔄 Atualizando Homebrew..."
+brew update
+
+# 3. Instalar Python 3 (se necessário)
+echo ""
+echo "🐍 Verificando Python 3..."
+if ! command_exists python3; then
+    echo "   ⚠️  Python 3 não encontrado. Instalando..."
+    brew install python@3.11
+    echo "   ✅ Python 3 instalado!"
+else
+    PYTHON_VERSION=$(python3 --version)
+    echo "   ✅ Python já instalado: $PYTHON_VERSION"
+fi
+
+# 4. INSTALAR FFMPEG (CRÍTICO!)
+echo ""
+echo "🎬 Instalando FFmpeg..."
+if ! command_exists ffmpeg; then
+    echo "   ⚠️  FFmpeg não encontrado. Instalando..."
+    brew install ffmpeg
+    echo "   ✅ FFmpeg instalado com sucesso!"
+else
+    echo "   ✅ FFmpeg já instalado"
+    FFMPEG_VERSION=$(ffmpeg -version | head -n 1)
+    echo "   📍 $FFMPEG_VERSION"
+
+    # Verificar se precisa atualizar
+    echo "   🔄 Verificando atualizações do FFmpeg..."
+    brew upgrade ffmpeg 2>/dev/null || echo "   ✅ FFmpeg já está na versão mais recente"
+fi
+
+# Verificar localização do FFmpeg
+FFMPEG_PATH=$(which ffmpeg)
+echo "   📍 FFmpeg instalado em: $FFMPEG_PATH"
+
+# 5. Criar ambiente virtual Python
+echo ""
+echo "📁 Criando ambiente virtual Python..."
+if [ ! -d "venv" ]; then
+    python3 -m venv venv
+    echo "   ✅ Ambiente virtual criado"
+else
+    echo "   ✅ Ambiente virtual já existe"
+fi
+
+# Ativar ambiente virtual
+source venv/bin/activate
+
+# 6. Atualizar pip
+echo ""
+echo "⬆️  Atualizando pip..."
+python -m pip install --upgrade pip
+
+# 7. Instalar dependências Python
+echo ""
+echo "📚 Instalando dependências Python..."
+if [ -f "requirements.txt" ]; then
+    pip install -r requirements.txt
+    echo "   ✅ Dependências instaladas!"
+else
+    echo "   ⚠️  requirements.txt não encontrado. Instalando dependências básicas..."
+    pip install fastapi uvicorn yt-dlp requests pydantic python-multipart
+fi
+
+# 8. Atualizar yt-dlp para versão mais recente
+echo ""
+echo "🔄 Atualizando yt-dlp para versão mais recente..."
+pip install --upgrade yt-dlp
+
+# 9. Instalar PyInstaller (para criar executável)
+echo ""
+echo "📦 Instalando PyInstaller..."
+pip install pyinstaller
+
+# 10. Verificação final
+echo ""
+echo "=============================================="
+echo "✅ INSTALAÇÃO CONCLUÍDA!"
+echo "=============================================="
+echo ""
+echo "📋 Resumo da instalação:"
+echo "   ✅ Homebrew: $(brew --version | head -n 1)"
+echo "   ✅ Python: $(python --version)"
+echo "   ✅ FFmpeg: $(ffmpeg -version | head -n 1 | cut -d' ' -f3)"
+echo "   ✅ yt-dlp: $(yt-dlp --version)"
+echo "   ✅ PyInstaller: $(pyinstaller --version)"
+echo ""
+echo "🎯 Próximos passos:"
+echo "   1. Para USAR o aplicativo:"
+echo "      python3 gui_app.py"
+echo ""
+echo "   2. Para COMPILAR o executável:"
+echo "      python3 build_executable.py"
+echo "      ou"
+echo "      pyinstaller YouTubeDownloader.spec --clean"
+echo ""
+echo "   3. O executável estará em: dist/YouTubeDownloader.app"
+echo ""
+echo "💡 Dica: O FFmpeg foi instalado em: $FFMPEG_PATH"
+echo "   Ele será automaticamente incluído no executável."
+echo ""
+
+# Manter terminal aberto
+read -p "Pressione ENTER para fechar..."
