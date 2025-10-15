@@ -474,9 +474,10 @@ class YouTubeDownloaderGUI:
                 # Configurar diretório de downloads ANTES de importar
                 os.environ['DOWNLOAD_DIR'] = str(DOWNLOAD_DIR)
 
-                # Importar FastAPI e criar app diretamente aqui para evitar problemas de import
-                from fastapi import FastAPI
+                # Importar dependências
+                from fastapi import FastAPI, APIRouter
                 from fastapi.middleware.cors import CORSMiddleware
+                from fastapi.responses import StreamingResponse, JSONResponse
                 import uvicorn
 
                 # Criar app FastAPI
@@ -495,20 +496,9 @@ class YouTubeDownloaderGUI:
                     allow_headers=["*"],
                 )
 
-                # Importar e registrar rotas manualmente
+                # Importar rotas dentro do try/except para lidar com executável
                 try:
-                    # Tentar importar rotas
-                    import importlib.util
-
-                    # Caminho para os módulos de rotas
-                    app_path = os.path.join(application_path, 'app')
-                    routes_path = os.path.join(app_path, 'routes')
-
-                    # Adicionar ao sys.path
-                    if app_path not in sys.path:
-                        sys.path.insert(0, app_path)
-
-                    # Importar rotas
+                    # Tentar importar rotas normalmente
                     from app.routes import health, video, downloads
 
                     # Registrar rotas
@@ -518,22 +508,189 @@ class YouTubeDownloaderGUI:
 
                     self.queue.put(('server_status', 'starting'))
 
-                except ImportError as e:
-                    # Se falhar, criar rotas básicas inline
-                    from fastapi import APIRouter
-                    from fastapi.responses import JSONResponse
+                except (ImportError, ModuleNotFoundError) as e:
+                    # Se falhar (comum em executável), criar rotas inline
+                    self.queue.put(('server_status', 'creating_inline_routes'))
 
-                    health_router = APIRouter()
+                    # Importar módulos necessários diretamente
+                    try:
+                        import yt_dlp
+                        import logging
+                        import asyncio
+                        from typing import Dict, Optional
+                        from pydantic import BaseModel, HttpUrl
+                        import json
 
-                    @health_router.get("/health")
-                    async def health_check():
-                        return {"status": "ok", "message": "Server is running"}
+                        logging.basicConfig(level=logging.INFO)
+                        logger = logging.getLogger(__name__)
 
-                    app.include_router(health_router)
+                        # Definir schemas inline
+                        class VideoRequest(BaseModel):
+                            url: HttpUrl
+                            quality: Optional[str] = "best"
+                            format: Optional[str] = "mp4"
+                            audio_only: Optional[bool] = False
 
-                    self.queue.put(('server_status', f'warning: rotas limitadas - {str(e)}'))
+                        class VideoInfo(BaseModel):
+                            title: str
+                            duration: Optional[int]
+                            uploader: Optional[str] = "N/A"
+                            view_count: Optional[int]
+                            upload_date: Optional[str]
+                            description: Optional[str]
+                            thumbnail: Optional[str] = None
 
-                # Configuração do uvicorn para rodar sem logs excessivos
+                        class DownloadProgress(BaseModel):
+                            status: str
+                            progress_percent: Optional[float] = 0.0
+                            downloaded_bytes: Optional[int] = 0
+                            total_bytes: Optional[int] = 0
+                            speed: Optional[str] = None
+                            eta: Optional[str] = None
+                            current_strategy: Optional[str] = None
+                            message: Optional[str] = None
+                            filename: Optional[str] = None
+
+                        # Funções auxiliares inline
+                        def normalize_youtube_url(url: str) -> str:
+                            """Normalizar URL do YouTube"""
+                            url = url.strip()
+                            if 'youtu.be/' in url:
+                                video_id = url.split('youtu.be/')[-1].split('?')[0]
+                                return f'https://www.youtube.com/watch?v={video_id}'
+                            return url
+
+                        def is_youtube_short(url: str) -> bool:
+                            """Verificar se é YouTube Short"""
+                            return '/shorts/' in url
+
+                        # Criar roteadores
+                        health_router = APIRouter()
+                        video_router = APIRouter(prefix="/video", tags=["video"])
+
+                        @health_router.get("/health")
+                        async def health_check():
+                            return {"status": "ok", "message": "Server is running"}
+
+                        @video_router.post("/info")
+                        async def get_video_info(request: VideoRequest):
+                            """Obter informações do vídeo"""
+                            try:
+                                url = normalize_youtube_url(str(request.url))
+                                ydl_opts = {
+                                    'quiet': True,
+                                    'no_warnings': True,
+                                    'extractor_args': {'youtube': {'player_client': ['android']}}
+                                }
+
+                                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                                    info = ydl.extract_info(url, download=False)
+
+                                thumbnail_url = None
+                                if 'thumbnails' in info and info['thumbnails']:
+                                    thumbnail_url = info['thumbnails'][-1]['url']
+                                elif 'thumbnail' in info:
+                                    thumbnail_url = info['thumbnail']
+
+                                return VideoInfo(
+                                    title=info.get('title', 'N/A'),
+                                    duration=info.get('duration'),
+                                    uploader=info.get('uploader', 'N/A'),
+                                    view_count=info.get('view_count'),
+                                    upload_date=info.get('upload_date'),
+                                    description=info.get('description', '')[:500] if info.get('description') else None,
+                                    thumbnail=thumbnail_url
+                                )
+                            except Exception as e:
+                                logger.error(f"Erro ao obter info: {e}")
+                                return JSONResponse(status_code=400, content={"detail": str(e)})
+
+                        @video_router.post("/download-stream")
+                        async def download_video_stream(request: VideoRequest):
+                            """Download com progresso via SSE"""
+                            async def event_generator():
+                                progress_data = {'percent': 0}
+
+                                def progress_hook(d):
+                                    if d['status'] == 'downloading':
+                                        downloaded = d.get('downloaded_bytes', 0)
+                                        total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
+                                        if total > 0:
+                                            progress_data['percent'] = (downloaded / total) * 100
+
+                                try:
+                                    yield f"data: {json.dumps({'status': 'starting', 'progress_percent': 0, 'message': 'Iniciando...'})}\n\n"
+
+                                    url = normalize_youtube_url(str(request.url))
+                                    output_template = f"{DOWNLOAD_DIR}/%(title)s.%(ext)s"
+
+                                    ydl_opts = {
+                                        'format': 'best',
+                                        'outtmpl': output_template,
+                                        'progress_hooks': [progress_hook],
+                                        'quiet': False,
+                                        'no_warnings': False,
+                                    }
+
+                                    loop = asyncio.get_event_loop()
+
+                                    def do_download():
+                                        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                                            info = ydl.extract_info(url, download=True)
+                                            return info
+
+                                    # Simular progresso enquanto baixa
+                                    download_task = loop.run_in_executor(None, do_download)
+
+                                    while not download_task.done():
+                                        percent = progress_data['percent']
+                                        yield f"data: {json.dumps({'status': 'downloading', 'progress_percent': percent, 'message': f'Baixando: {percent:.1f}%'})}\n\n"
+                                        await asyncio.sleep(0.5)
+
+                                    info = await download_task
+
+                                    thumbnail_url = None
+                                    if 'thumbnails' in info and info['thumbnails']:
+                                        thumbnail_url = info['thumbnails'][-1]['url']
+
+                                    video_info = {
+                                        'title': info.get('title', 'N/A'),
+                                        'duration': info.get('duration'),
+                                        'uploader': info.get('uploader', 'N/A'),
+                                        'view_count': info.get('view_count'),
+                                        'upload_date': info.get('upload_date'),
+                                        'thumbnail': thumbnail_url
+                                    }
+
+                                    yield f"data: {json.dumps({'status': 'completed', 'progress_percent': 100, 'message': 'Concluído!', 'video_info': video_info})}\n\n"
+
+                                except Exception as e:
+                                    logger.error(f"Erro no download: {e}")
+                                    yield f"data: {json.dumps({'status': 'error', 'message': str(e)})}\n\n"
+
+                            return StreamingResponse(
+                                event_generator(),
+                                media_type="text/event-stream",
+                                headers={
+                                    "Cache-Control": "no-cache",
+                                    "Connection": "keep-alive",
+                                    "X-Accel-Buffering": "no",
+                                }
+                            )
+
+                        # Registrar rotas inline
+                        app.include_router(health_router)
+                        app.include_router(video_router)
+
+                        self.queue.put(('server_status', 'starting'))
+
+                    except Exception as inner_e:
+                        self.queue.put(('server_status', f'error: {str(inner_e)}'))
+                        import traceback
+                        traceback.print_exc()
+                        return
+
+                # Configuração do uvicorn
                 config = uvicorn.Config(
                     app,
                     host=API_HOST,
