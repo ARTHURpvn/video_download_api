@@ -638,19 +638,63 @@ class YouTubeDownloaderGUI:
                                 yield f"data: {json.dumps({'status': 'starting', 'progress_percent': 0, 'message': 'Iniciando...'})}\n\n"
 
                                 url = normalize_youtube_url(str(request.url))
+
+                                # Template correto para evitar nomes estranhos
                                 output_template = str(DOWNLOAD_DIR / "%(title)s.%(ext)s")
 
-                                ydl_opts = {
-                                    'format': 'best',
-                                    'outtmpl': output_template,
-                                    'progress_hooks': [progress_hook],
-                                    'quiet': True,
-                                    'no_warnings': True,
-                                }
+                                # Configurações OTIMIZADAS - download direto sem conversão desnecessária
+                                if request.audio_only or request.format == "audio":
+                                    # Download de áudio (MP3)
+                                    ydl_opts = {
+                                        'format': 'bestaudio/best',
+                                        'outtmpl': output_template,
+                                        'progress_hooks': [progress_hook],
+                                        'quiet': True,
+                                        'no_warnings': True,
+                                        'postprocessors': [{
+                                            'key': 'FFmpegExtractAudio',
+                                            'preferredcodec': 'mp3',
+                                            'preferredquality': '192',
+                                        }],
+                                        'prefer_ffmpeg': True,
+                                    }
+                                else:
+                                    # Download de vídeo (MP4) - MÉTODO MAIS SIMPLES E CONFIÁVEL
+                                    # Baixar formato já pronto em MP4 (mais rápido e sem erros)
+                                    ydl_opts = {
+                                        'format': 'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4][height<=1080]/best',
+                                        'outtmpl': output_template,
+                                        'progress_hooks': [progress_hook],
+                                        'quiet': True,
+                                        'no_warnings': True,
+                                        'merge_output_format': 'mp4',
+                                        'prefer_ffmpeg': True,
+                                    }
 
                                 loop = asyncio.get_event_loop()
 
                                 def do_download():
+                                    # CONFIGURAR FFMPEG PARA EXECUTÁVEL - CORRIGIDO
+                                    ffmpeg_location = None
+                                    if getattr(sys, 'frozen', False):
+                                        # Rodando como executável - procurar FFmpeg empacotado
+                                        base_path = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
+
+                                        # Procurar FFmpeg no diretório do executável
+                                        if sys.platform == 'win32':
+                                            ffmpeg_exe = os.path.join(base_path, 'ffmpeg.exe')
+                                        else:
+                                            ffmpeg_exe = os.path.join(base_path, 'ffmpeg')
+
+                                        if os.path.exists(ffmpeg_exe):
+                                            ffmpeg_location = base_path
+                                            print(f"✅ Usando FFmpeg empacotado: {ffmpeg_exe}")
+                                            # IMPORTANTE: Adicionar ao ydl_opts ANTES de criar o objeto
+                                            ydl_opts['ffmpeg_location'] = ffmpeg_location
+                                        else:
+                                            print(f"⚠️ FFmpeg não encontrado em: {ffmpeg_exe}")
+                                            print(f"⚠️ Conteúdo do diretório: {os.listdir(base_path)[:20]}")
+
                                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                                         info = ydl.extract_info(url, download=True)
                                         return info
@@ -993,12 +1037,30 @@ class YouTubeDownloaderGUI:
         """Processar conclusão do download"""
         video_info = result.get('video_info', {})
         title = video_info.get('title', 'Vídeo')
+        filename = result.get('filename', None)
 
         self.status_var.set(f"✅ Download completo: {title}")
+
+        # Esconder a barra de progresso após 2 segundos
+        self.root.after(2000, lambda: self.progress_card.pack_forget())
+
+        # Abrir a pasta onde o vídeo foi salvo
+        download_path = str(DOWNLOAD_DIR)
+
         messagebox.showinfo("✅ Sucesso!",
-                          f"Download concluído!\n\n{title}\n\n📁 Arquivo salvo em: Videos Baixados",
+                          f"Download concluído!\n\n{title}\n\n📁 Arquivo salvo em:\n{download_path}\n\nClique OK para abrir a pasta.",
                           icon='info')
 
+        # Abrir a pasta de downloads após clicar OK
+        try:
+            if sys.platform == 'win32':
+                os.startfile(download_path)
+            elif sys.platform == 'darwin':  # macOS
+                os.system(f'open "{download_path}"')
+            else:  # Linux
+                os.system(f'xdg-open "{download_path}"')
+        except Exception as e:
+            print(f"Não foi possível abrir a pasta: {e}")
 
     def on_closing(self):
         """Lidar com fechamento da aplicação"""

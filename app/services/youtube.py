@@ -8,6 +8,7 @@ from ..utils.helpers import normalize_youtube_url, is_youtube_short
 from ..utils.config import DOWNLOAD_DIR
 from ..models.schemas import VideoRequest, DownloadProgress
 from .video_converter import find_and_convert_latest_video
+from ..utils.ffmpeg_locator import get_ffmpeg_location_for_ytdlp
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +201,14 @@ def download_video_robust(url: str, request: VideoRequest, progress_callback: Op
     # Template simples - deixar yt-dlp decidir o nome temporariamente
     output_template = f"{DOWNLOAD_DIR}/%(title)s.%(ext)s"
 
+    # 🔧 CONFIGURAR LOCALIZAÇÃO DO FFMPEG
+    # Isso é CRÍTICO para o executável funcionar!
+    ffmpeg_location = get_ffmpeg_location_for_ytdlp()
+    if ffmpeg_location:
+        logger.info(f"🎬 FFmpeg configurado em: {ffmpeg_location}")
+    else:
+        logger.info(f"🎬 FFmpeg será buscado no PATH do sistema")
+
     # Estratégias ATUALIZADAS que funcionam com YouTube atual (2024/2025)
     download_strategies = [
         {
@@ -210,6 +219,7 @@ def download_video_robust(url: str, request: VideoRequest, progress_callback: Op
                 'quiet': False,
                 'no_warnings': False,
                 'progress_hooks': [tracker.progress_hook],
+                'ffmpeg_location': ffmpeg_location,  # 🔧 ADICIONADO
                 'extractor_args': {
                     'youtube': {
                         'player_client': ['mediaconnect'],
@@ -227,6 +237,7 @@ def download_video_robust(url: str, request: VideoRequest, progress_callback: Op
                 'quiet': False,
                 'no_warnings': False,
                 'progress_hooks': [tracker.progress_hook],
+                'ffmpeg_location': ffmpeg_location,  # 🔧 ADICIONADO
                 'extractor_args': {
                     'youtube': {
                         'player_client': ['ios_music'],
@@ -244,6 +255,7 @@ def download_video_robust(url: str, request: VideoRequest, progress_callback: Op
                 'quiet': False,
                 'no_warnings': False,
                 'progress_hooks': [tracker.progress_hook],
+                'ffmpeg_location': ffmpeg_location,  # 🔧 ADICIONADO
                 'extractor_args': {
                     'youtube': {
                         'player_client': ['android_music'],
@@ -261,6 +273,7 @@ def download_video_robust(url: str, request: VideoRequest, progress_callback: Op
                 'quiet': False,
                 'no_warnings': False,
                 'progress_hooks': [tracker.progress_hook],
+                'ffmpeg_location': ffmpeg_location,  # 🔧 ADICIONADO
                 'extractor_args': {
                     'youtube': {
                         'player_client': ['web'],
@@ -284,6 +297,7 @@ def download_video_robust(url: str, request: VideoRequest, progress_callback: Op
                 'quiet': False,
                 'no_warnings': False,
                 'progress_hooks': [tracker.progress_hook],
+                'ffmpeg_location': ffmpeg_location,  # 🔧 ADICIONADO
                 'merge_output_format': 'mp4',
                 'socket_timeout': 60,
                 'retries': 5,
@@ -301,6 +315,7 @@ def download_video_robust(url: str, request: VideoRequest, progress_callback: Op
                     'outtmpl': output_template,
                     'quiet': False,
                     'progress_hooks': [tracker.progress_hook],
+                    'ffmpeg_location': ffmpeg_location,  # 🔧 ADICIONADO
                     'postprocessors': [{
                         'key': 'FFmpegExtractAudio',
                         'preferredcodec': 'mp3',

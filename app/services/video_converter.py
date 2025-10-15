@@ -6,6 +6,7 @@ from typing import Optional
 
 from ..utils.config import DOWNLOAD_DIR
 from ..utils.helpers import generate_video_filename
+from ..utils.ffmpeg_locator import get_ffmpeg_path, get_ffprobe_path
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +18,14 @@ def convert_with_ffmpeg(input_file: str, target_filename: str) -> str:
 
         logger.info(f"Convertendo {input_file} para {target_filename} usando ffmpeg")
 
+        # 🔧 Usar o localizador de FFmpeg
+        ffmpeg_cmd = get_ffmpeg_path()
+        logger.info(f"🎬 Usando FFmpeg: {ffmpeg_cmd}")
+
         # Comando ffmpeg SIMPLIFICADO - apenas copia streams sem recodificar
         # Isso evita perda de frames e garante que o vídeo completo seja preservado
         cmd = [
-            'ffmpeg',
+            ffmpeg_cmd,  # 🔧 MODIFICADO
             '-y',  # sobrescrever arquivo se existir
             '-i', input_path,
             '-c', 'copy',  # COPIAR streams sem recodificar (mais rápido e sem perda)
@@ -62,8 +67,11 @@ def convert_with_ffmpeg_reencode(input_file: str, target_filename: str) -> str:
 
         logger.info(f"Recodificando {input_file} para {target_filename}")
 
+        # 🔧 Usar o localizador de FFmpeg
+        ffmpeg_cmd = get_ffmpeg_path()
+
         cmd = [
-            'ffmpeg',
+            ffmpeg_cmd,  # 🔧 MODIFICADO
             '-y',
             '-i', input_path,
             '-c:v', 'libx264',  # codec de vídeo

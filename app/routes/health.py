@@ -3,6 +3,8 @@ import os
 import subprocess
 import logging
 
+from ..utils.ffmpeg_locator import get_ffmpeg_path, verify_ffmpeg_available
+
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["health"])
 
@@ -27,13 +29,9 @@ async def health_check():
         except:
             yt_dlp_version = "not installed"
 
-        # Verificar ffmpeg
-        ffmpeg_available = False
-        try:
-            result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True, timeout=5)
-            ffmpeg_available = result.returncode == 0
-        except:
-            ffmpeg_available = False
+        # 🔧 Verificar ffmpeg usando o localizador
+        ffmpeg_available = verify_ffmpeg_available()
+        ffmpeg_path = get_ffmpeg_path() if ffmpeg_available else "not found"
 
         # Verificar diretório de downloads
         from ..utils.config import DOWNLOAD_DIR
@@ -52,24 +50,21 @@ async def health_check():
                     "version": yt_dlp_version
                 },
                 "ffmpeg": {
-                    "available": ffmpeg_available
+                    "available": ffmpeg_available,
+                    "path": ffmpeg_path  # 🔧 ADICIONADO
                 },
-                "storage": {
-                    "downloads_dir": DOWNLOAD_DIR,
+                "downloads_directory": {
                     "exists": downloads_dir_exists,
-                    "writable": downloads_dir_writable
+                    "writable": downloads_dir_writable,
+                    "path": str(DOWNLOAD_DIR)
                 }
-            },
-            "environment": {
-                "is_render": os.environ.get('RENDER') == 'true',
-                "port": os.environ.get('PORT', '8000')
             }
         }
     except Exception as e:
-        logger.error(f"Health check error: {e}")
+        logger.error(f"Erro no health check: {e}")
         return {
-            "status": "unhealthy",
-            "message": f"Error: {str(e)}"
+            "status": "error",
+            "message": str(e)
         }
 
 @router.options("/video/info")
