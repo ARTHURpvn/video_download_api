@@ -140,26 +140,30 @@ if not exist "%EXTRACTED_DIR%\bin\ffmpeg.exe" (
     goto :install_deps
 )
 
-echo Instalando FFmpeg em: %FFMPEG_DIR%
-xcopy "%EXTRACTED_DIR%\bin\*" "%FFMPEG_DIR%\" /E /I /Y >nul
+echo Instalando FFmpeg em: %FFMPEG_DIR%\bin
+REM Garantir subpasta bin
+if not exist "%FFMPEG_DIR%\bin" mkdir "%FFMPEG_DIR%\bin"
 
-REM Adicionar FFmpeg ao PATH do usuário permanentemente
-echo Adicionando FFmpeg ao PATH...
-powershell -Command "[Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path', 'User') + ';%FFMPEG_DIR%', 'User')"
+REM Copiar binários para a pasta bin
+xcopy "%EXTRACTED_DIR%\bin\*" "%FFMPEG_DIR%\bin\" /E /I /Y >nul
 
-REM Adicionar ao PATH da sessão atual
-set PATH=%PATH%;%FFMPEG_DIR%
+REM Adicionar FFmpeg ao PATH do usuário permanentemente (apende \bin)
+echo Adicionando FFmpeg ao PATH do usuário...
+powershell -Command "[Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path', 'User') + ';%FFMPEG_DIR%\\bin', 'User')"
+
+REM Também atualizar PATH da sessão atual
+set PATH=%PATH%;%FFMPEG_DIR%\bin
 
 REM Verificar se funcionou
 ffmpeg -version >nul 2>&1
 if %errorlevel% equ 0 (
     echo.
-    echo [OK] FFmpeg instalado com sucesso em: %FFMPEG_DIR%
-    echo [OK] FFmpeg adicionado ao PATH do sistema
+    echo [OK] FFmpeg instalado com sucesso em: %FFMPEG_DIR%\bin
+    echo [OK] FFmpeg adicionado ao PATH do usuário
 ) else (
     echo.
-    echo [AVISO] FFmpeg instalado mas pode precisar reiniciar o terminal
-    echo         Caminho: %FFMPEG_DIR%
+    echo [AVISO] FFmpeg instalado mas pode precisar reiniciar o terminal ou sessão do Explorer
+    echo         Caminho: %FFMPEG_DIR%\bin
 )
 
 REM Limpar arquivos temporários

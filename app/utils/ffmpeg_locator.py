@@ -22,12 +22,19 @@ def get_ffmpeg_path() -> str:
             # Fallback: usar o diretório do executável
             bundle_dir = os.path.dirname(sys.executable)
 
-        # Tentar encontrar ffmpeg no bundle
-        ffmpeg_in_bundle = os.path.join(bundle_dir, 'ffmpeg')
-        if os.path.exists(ffmpeg_in_bundle):
-            return ffmpeg_in_bundle
+        # Possíveis nomes no bundle: 'ffmpeg' (Unix) ou 'ffmpeg.exe' (Windows)
+        candidates = [
+            os.path.join(bundle_dir, 'ffmpeg'),
+            os.path.join(bundle_dir, 'ffmpeg.exe'),
+            os.path.join(bundle_dir, 'bin', 'ffmpeg'),
+            os.path.join(bundle_dir, 'bin', 'ffmpeg.exe'),
+        ]
 
-        # Se não encontrou, retornar o caminho e deixar o sistema tentar
+        for ff in candidates:
+            if os.path.exists(ff):
+                return ff
+
+        # Se não encontrou, retornar 'ffmpeg' para que o sistema tente no PATH
         return 'ffmpeg'
     else:
         # Está rodando em desenvolvimento - usar o ffmpeg do sistema
@@ -56,10 +63,19 @@ def get_ffprobe_path() -> str:
     """
     ffmpeg_path = get_ffmpeg_path()
 
-    # Substituir 'ffmpeg' por 'ffprobe' no caminho
-    if ffmpeg_path.endswith('ffmpeg'):
-        return ffmpeg_path.replace('ffmpeg', 'ffprobe')
+    # Se o caminho aponta para um binário com nome completo, trocar pelo ffprobe
+    if ffmpeg_path and os.path.basename(ffmpeg_path).lower().startswith('ffmpeg'):
+        base = os.path.dirname(ffmpeg_path)
+        # Preferir ffprobe.exe em Windows
+        candidates = [
+            os.path.join(base, 'ffprobe.exe'),
+            os.path.join(base, 'ffprobe'),
+        ]
+        for cand in candidates:
+            if os.path.exists(cand):
+                return cand
 
+    # Fallback
     return 'ffprobe'
 
 def get_ffmpeg_location_for_ytdlp() -> str:
@@ -69,7 +85,7 @@ def get_ffmpeg_location_for_ytdlp() -> str:
     """
     ffmpeg_path = get_ffmpeg_path()
 
-    if ffmpeg_path == 'ffmpeg':
+    if not ffmpeg_path or ffmpeg_path in ('ffmpeg', 'ffmpeg.exe'):
         # Não encontrou caminho específico, retornar None
         # yt-dlp vai procurar no PATH
         return None
@@ -94,4 +110,3 @@ def verify_ffmpeg_available() -> bool:
         return result.returncode == 0
     except Exception:
         return False
-

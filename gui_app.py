@@ -462,6 +462,10 @@ class YouTubeDownloaderGUI:
                 # Configurar logging ANTES de qualquer import - FIX WINDOWS
                 import logging
                 import sys
+                import socket
+                import traceback
+                import asyncio
+                from pathlib import Path
 
                 # Configurar logging com força para evitar conflitos no Windows
                 for handler in logging.root.handlers[:]:
@@ -473,6 +477,14 @@ class YouTubeDownloaderGUI:
                     handlers=[logging.NullHandler()],  # Usar NullHandler para Windows
                     force=True  # Forçar reconfiguração
                 )
+
+                # Arquivo de log local (útil em executável sem console)
+                try:
+                    log_dir = Path.home() / ("YouTubeDownloader_logs")
+                    log_dir.mkdir(parents=True, exist_ok=True)
+                    log_file = log_dir / "server.log"
+                except Exception:
+                    log_file = None
 
                 # Silenciar completamente uvicorn e starlette no Windows
                 for logger_name in ['uvicorn', 'uvicorn.error', 'uvicorn.access', 'starlette', 'fastapi']:
@@ -493,6 +505,21 @@ class YouTubeDownloaderGUI:
                 if application_path not in sys.path:
                     sys.path.insert(0, application_path)
 
+                # Se estivermos em executável, garantir que o PATH inclua o bundle e possível subpasta 'bin'
+                if getattr(sys, 'frozen', False):
+                    try:
+                        bundle_dir = application_path
+                        bin_dir = os.path.join(bundle_dir, 'bin')
+                        current_path = os.environ.get('PATH', '')
+                        additions = [bundle_dir]
+                        if os.path.exists(bin_dir):
+                            additions.append(bin_dir)
+                        # Prepend para priorizar binários empacotados
+                        new_path = os.pathsep.join(additions + [current_path])
+                        os.environ['PATH'] = new_path
+                    except Exception:
+                        pass
+
                 # Configurar diretório de downloads ANTES de importar
                 os.environ['DOWNLOAD_DIR'] = str(DOWNLOAD_DIR)
 
@@ -501,6 +528,38 @@ class YouTubeDownloaderGUI:
                 from fastapi.middleware.cors import CORSMiddleware
                 from fastapi.responses import StreamingResponse, JSONResponse
                 import uvicorn
+
+                # Em threads no Windows o event loop pode precisar de policy diferente
+                try:
+                    if sys.platform == 'win32':
+                        # Forçar selector policy em thread para compatibilidade com uvicorn/asyncio
+                        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+                except Exception:
+                    # Registrar no log se disponível
+                    if log_file:
+                        with open(log_file, 'a', encoding='utf-8') as f:
+                            f.write('Warning: não foi possível ajustar event loop policy\n')
+
+                # Função para encontrar uma porta livre (tenta a preferida e volta)
+                def find_free_port(preferred=API_PORT, max_try_span=50):
+                    try:
+                        base = int(preferred)
+                    except Exception:
+                        base = 8765
+
+                    for p in range(base, base + max_try_span):
+                        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                            try:
+                                s.bind((API_HOST, p))
+                                return p
+                            except OSError:
+                                continue
+
+                    # Fallback: let OS choose
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                        s.bind((API_HOST, 0))
+                        return s.getsockname()[1]
 
                 # Criar app FastAPI
                 app = FastAPI(
@@ -541,7 +600,7 @@ class YouTubeDownloaderGUI:
 
                     # Importar módulos necessários diretamente
                     import yt_dlp
-                    import asyncio
+                    import asyncio as _asyncio
                     from typing import Dict, Optional
                     from pydantic import BaseModel, HttpUrl
                     import json
@@ -749,23 +808,50 @@ class YouTubeDownloaderGUI:
 
                     self.queue.put(('server_status', 'starting'))
 
+                # Escolher porta disponível (tenta a preferida e um range) e atualizar API_BASE_URL
+                try:
+                    chosen_port = find_free_port(preferred=API_PORT, max_try_span=50)
+                except Exception:
+                    chosen_port = API_PORT
+
+                # Atualizar variáveis globais para que as chamadas HTTP usem a porta correta
+                try:
+                    globals()['API_PORT'] = chosen_port
+                    globals()['API_BASE_URL'] = f"http://{API_HOST}:{chosen_port}"
+                except Exception:
+                    pass
+
                 # Configuração do uvicorn OTIMIZADA para Windows
                 config = uvicorn.Config(
                     app,
                     host=API_HOST,
-                    port=API_PORT,
+                    port=chosen_port,
                     log_level="critical",  # Crítico apenas
                     access_log=False,
                     log_config=None,  # Desabilitar completamente
                     use_colors=False,  # Sem cores no Windows
                 )
+
                 server = uvicorn.Server(config)
 
                 # Notificar que servidor está iniciando
                 self.queue.put(('server_status', 'starting'))
 
-                # Rodar servidor
-                server.run()
+                try:
+                    server.run()
+                except Exception as e:
+                    # Registrar erro em log para diagnóstico (importante em executável)
+                    err = traceback.format_exc()
+                    if log_file:
+                        try:
+                            with open(log_file, 'a', encoding='utf-8') as f:
+                                f.write(f"[SERVER ERROR]\n{err}\n")
+                        except Exception:
+                            pass
+                    # Enviar status de erro para a GUI
+                    error_msg = str(e)
+                    self.queue.put(('server_status', f'error: {error_msg}'))
+                    return
 
             except Exception as e:
                 error_msg = str(e)
@@ -786,7 +872,9 @@ class YouTubeDownloaderGUI:
         max_attempts = 30
         for i in range(max_attempts):
             try:
-                response = requests.get(f"{API_BASE_URL}/health", timeout=1)
+                # Usar API_BASE_URL atualizado dinamicamente (pode ter sido alterado no thread do servidor)
+                base = globals().get('API_BASE_URL', API_BASE_URL)
+                response = requests.get(f"{base}/health", timeout=1)
                 if response.status_code == 200:
                     self.server_ready = True
                     self.queue.put(('server_status', 'ready'))

@@ -10,6 +10,10 @@ import shutil
 import sys
 import subprocess
 from pathlib import Path
+import tempfile
+import urllib.request
+import zipfile
+import time
 
 def find_ffmpeg():
     """Localizar FFmpeg no sistema"""
@@ -31,10 +35,59 @@ def find_ffmpeg():
         print(f"⚠️  Erro ao procurar FFmpeg: {e}")
         return None
 
+def download_ffmpeg_windows():
+    """Baixa e extrai FFmpeg (release essentials) em um diretório temporário e retorna o caminho para ffmpeg.exe.
+    Retorna None em caso de falha.
+    """
+    url = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
+    tmpdir = None
+    try:
+        tmpdir = tempfile.mkdtemp(prefix='ffmpeg_build_')
+        zip_path = os.path.join(tmpdir, 'ffmpeg.zip')
+
+        print(f"→ Baixando FFmpeg para build: {url}")
+        with urllib.request.urlopen(url) as resp, open(zip_path, 'wb') as out_file:
+            shutil.copyfileobj(resp, out_file)
+
+        print("→ Extraindo FFmpeg...")
+        with zipfile.ZipFile(zip_path, 'r') as zf:
+            zf.extractall(tmpdir)
+
+        # Procurar ffmpeg.exe dentro do diretório extraído e retornar o diretório que contém os binários
+        for root, dirs, files in os.walk(tmpdir):
+            for name in files:
+                if name.lower() == 'ffmpeg.exe':
+                    ffmpeg_exe = os.path.join(root, name)
+                    bin_dir = os.path.dirname(ffmpeg_exe)
+                    print(f"✅ FFmpeg extraido em: {ffmpeg_exe}")
+                    print(f"✅ Diretório de bin: {bin_dir}")
+                    return bin_dir
+
+        print("⚠️  ffmpeg.exe nao encontrado no zip extraido")
+        return None
+    except Exception as e:
+        print(f"⚠️ Erro ao baixar/extrair FFmpeg: {e}")
+        return None
+    finally:
+        # nao remover tmpdir imediatamente — pyinstaller precisa ler os arquivos durante o build
+        # removemos apos um pequeno delay para evitar remoção prematura
+        if tmpdir:
+            try:
+                # dar tempo para pyinstaller coletar se estiver sendo executado logo em seguida
+                time.sleep(1)
+            except Exception:
+                pass
+
 def build_executable():
     """Criar executável com PyInstaller"""
 
     print("🚀 Iniciando build do executável...")
+
+    # Modo debug: construir com console para ver erros (use: python build_executable.py --debug)
+    debug_mode = False
+    if '--debug' in sys.argv or os.environ.get('DEBUG_BUILD') == '1':
+        debug_mode = True
+        print("⚠️  Modo DEBUG ativado: o executável será construído com console (sem --windowed)")
 
     # Localizar FFmpeg
     ffmpeg_path = find_ffmpeg()
@@ -53,7 +106,14 @@ def build_executable():
         'gui_app.py',  # Script principal
         '--name=YouTubeDownloader',  # Nome do executável
         '--onefile',  # Criar um único arquivo
-        '--windowed',  # Sem console (apenas GUI)
+        # Em modo debug não usar --windowed para permitir sair mensagens no console
+        # Caso contrário, usar --windowed para ocultar console
+    ]
+
+    if not debug_mode:
+        pyinstaller_args.append('--windowed')
+
+    pyinstaller_args += [
         '--clean',  # Limpar cache
         '--noconfirm',  # Não pedir confirmação
 
@@ -151,21 +211,46 @@ def build_executable():
             pyinstaller_args.append(f'--add-binary={ffprobe_path}{separator}.')
             print(f"📦 Incluindo FFprobe no executável...")
     else:
-        print("\n⚠️  AVISO: FFmpeg não foi encontrado!")
-        print("⚠️  O executável pode não conseguir processar vídeos corretamente.")
-        print("\n📝 Para instalar FFmpeg:")
-        if sys.platform == 'darwin':
-            print("   brew install ffmpeg")
-        elif sys.platform == 'win32':
-            print("   1. Baixe em: https://ffmpeg.org/download.html")
-            print("   2. Extraia e adicione ao PATH")
+        # Se for Windows, tentar baixar automaticamente para incluir no executavel
+        if sys.platform == 'win32':
+            print("\n⚠️  FFmpeg não foi encontrado no PATH. Tentando baixar para incluir no executavel...")
+            downloaded_ffmpeg = download_ffmpeg_windows()
+            if downloaded_ffmpeg and os.path.exists(downloaded_ffmpeg):
+                separator = ';'
+                # Se download retornou o diretório de binários, incluir toda a pasta
+                if os.path.isdir(downloaded_ffmpeg):
+                    # Incluir todos os arquivos do diretório de bin no destino 'bin' dentro do bundle
+                    for fname in os.listdir(downloaded_ffmpeg):
+                        src = os.path.join(downloaded_ffmpeg, fname)
+                        if os.path.isfile(src):
+                            pyinstaller_args.append(f"--add-binary={src}{separator}bin")
+                else:
+                    pyinstaller_args.append(f'--add-binary={downloaded_ffmpeg}{separator}.')
+                    # tentar localizar ffprobe no mesmo diretório
+                    ffprobe_candidate = os.path.join(os.path.dirname(downloaded_ffmpeg), 'ffprobe.exe')
+                    if os.path.exists(ffprobe_candidate):
+                        pyinstaller_args.append(f'--add-binary={ffprobe_candidate}{separator}.')
+                print("✅ FFmpeg incluido automaticamente no build.")
+            else:
+                print("\n⚠️  AVISO: Nao foi possivel baixar/extraer FFmpeg automaticamente.")
+                print("⚠️  O executavel pode nao conseguir processar videos corretamente.")
+                response = input("\n❓ Continuar mesmo assim? (s/N): ")
+                if response.lower() != 's':
+                    print("❌ Build cancelado.")
+                    return False
         else:
-            print("   sudo apt install ffmpeg")
+            print("\n⚠️  AVISO: FFmpeg não foi encontrado!")
+            print("⚠️  O executável pode não conseguir processar vídeos corretamente.")
+            print("\n📝 Para instalar FFmpeg:")
+            if sys.platform == 'darwin':
+                print("   brew install ffmpeg")
+            else:
+                print("   sudo apt install ffmpeg")
 
-        response = input("\n❓ Continuar mesmo assim? (s/N): ")
-        if response.lower() != 's':
-            print("❌ Build cancelado.")
-            return False
+            response = input("\n❓ Continuar mesmo assim? (s/N): ")
+            if response.lower() != 's':
+                print("❌ Build cancelado.")
+                return False
 
     # Executar PyInstaller
     print("\n📦 Empacotando aplicação...")
