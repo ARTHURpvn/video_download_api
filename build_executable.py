@@ -105,11 +105,16 @@ def build_executable():
     pyinstaller_args = [
         'gui_app.py',  # Script principal
         '--name=YouTubeDownloader',  # Nome do executável
-        '--onefile',  # Criar um único arquivo
-        # Em modo debug não usar --windowed para permitir sair mensagens no console
-        # Caso contrário, usar --windowed para ocultar console
     ]
 
+    # Em modo debug, construir em modo 'onedir' (diretório) para facilitar debug e evitar extração onefile
+    if debug_mode:
+        pyinstaller_args.append('--onedir')
+        print('⚠️  Build em modo ONEDIR (mais fácil para debug).')
+    else:
+        pyinstaller_args.append('--onefile')
+
+    # Em modo normal, ocultar console; em debug manter console
     if not debug_mode:
         pyinstaller_args.append('--windowed')
 

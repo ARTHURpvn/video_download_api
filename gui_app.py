@@ -15,6 +15,7 @@ from pathlib import Path
 import requests
 import re
 import json
+import shutil
 
 # Configurações
 API_HOST = "127.0.0.1"
@@ -46,6 +47,8 @@ class YouTubeDownloaderGUI:
         self.current_download_file = None
         self.last_url = ""
         self.fetch_info_timer = None
+        # Flag para evitar múltiplos alerts ao finalizar download
+        self._displaying_completion = False
 
         # Configurar estilo
         self.setup_styles()
@@ -78,7 +81,7 @@ class YouTubeDownloaderGUI:
         # Estilo dos botões
         style.configure("Primary.TButton",
                        background=self.primary_color,
-                       foreground="red",
+                       foreground="white",
                        padding=12,
                        font=('SF Pro Display', 11, 'bold'),
                        borderwidth=0)
@@ -301,24 +304,14 @@ class YouTubeDownloaderGUI:
         quality_combo.pack(pady=(5, 0))
 
         # Botão de download grande e destacado
-        self.download_btn = tk.Button(main_container,
-                                     text="⬇ BAIXAR AGORA",
-                                     command=self.start_download,
-                                     font=('SF Pro Display', 14, 'bold'),
-                                     bg=self.secondary_color,
-                                     fg="red",
-                                     activebackground='red',
-                                     activeforeground="red",
-                                     disabledforeground='#FFF',  # Texto cinza quando desabilitado
-                                     relief='flat',
-                                     bd=0,
-                                     cursor='hand2',
-                                     pady=15,
-                                     state='disabled')  # Iniciar desabilitado
+        # Usar ttk.Button para evitar que o clique altere as cores do tema
+        self.download_btn = ttk.Button(main_container,
+                                       text="⬇ BAIXAR AGORA",
+                                       command=self.start_download,
+                                       style="Primary.TButton",
+                                       cursor='hand2',
+                                       state='disabled')  # Iniciar desabilitado
         self.download_btn.pack(fill=tk.X, pady=(0, 15))
-
-        # Forçar fundo vermelho mesmo quando desabilitado
-        self.download_btn.configure(disabledforeground='#999999')
 
         # Barra de progresso moderna
         self.progress_card = tk.Frame(main_container, bg=self.card_bg, relief='flat')
@@ -718,8 +711,7 @@ class YouTubeDownloaderGUI:
                                         'prefer_ffmpeg': True,
                                     }
                                 else:
-                                    # Download de vídeo (MP4) - MÉTODO MAIS SIMPLES E CONFIÁVEL
-                                    # Baixar formato já pronto em MP4 (mais rápido e sem erros)
+                                    # Download de vídeo (MP4)
                                     ydl_opts = {
                                         'format': 'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4][height<=1080]/best',
                                         'outtmpl': output_template,
@@ -747,12 +739,8 @@ class YouTubeDownloaderGUI:
 
                                         if os.path.exists(ffmpeg_exe):
                                             ffmpeg_location = base_path
-                                            print(f"✅ Usando FFmpeg empacotado: {ffmpeg_exe}")
                                             # IMPORTANTE: Adicionar ao ydl_opts ANTES de criar o objeto
                                             ydl_opts['ffmpeg_location'] = ffmpeg_location
-                                        else:
-                                            print(f"⚠️ FFmpeg não encontrado em: {ffmpeg_exe}")
-                                            print(f"⚠️ Conteúdo do diretório: {os.listdir(base_path)[:20]}")
 
                                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                                         info = ydl.extract_info(url, download=True)
@@ -920,27 +908,44 @@ class YouTubeDownloaderGUI:
             messagebox.showwarning("Aviso", "Um download já está em andamento")
             return
 
+        # Se o usuário selecionou Áudio (MP3), verificar se o ffmpeg está disponível
+        is_audio = (self.format_var.get() == 'audio')
+        if is_audio:
+            ffmpeg_path = shutil.which('ffmpeg')
+            if not ffmpeg_path:
+                # Avisar e permitir que o usuário cancele para instalar o ffmpeg
+                keep_going = messagebox.askokcancel(
+                    "FFmpeg não encontrado",
+                    "Para converter para MP3 o FFmpeg é necessário e não foi encontrado no sistema.\n\n"
+                    "Instale o FFmpeg (https://ffmpeg.org/) e tente novamente.\n\n"
+                    "Deseja continuar sem FFmpeg (a conversão provavelmente falhará)?"
+                )
+                if not keep_going:
+                    return
+
         self.downloading = True
-        self.download_btn.config(state='disabled')
+        try:
+            self.download_btn.config(state='disabled')
+        except Exception:
+            pass
         self.progress_var.set(0)
         self.progress_label.config(text="0%")
 
         # Mostrar barra de progresso ANTES do botão de download
         self.progress_card.pack(fill=tk.X, pady=(0, 15), before=self.download_btn)
 
-        def download():
+        def download_worker():
             try:
                 self.queue.put(('status', 'Iniciando download...'))
                 self.queue.put(('progress', 0))
 
-                # Preparar payload
                 payload = {
                     "url": url,
                     "format": self.format_var.get(),
-                    "quality": self.quality_var.get()
+                    "quality": self.quality_var.get(),
+                    "audio_only": (self.format_var.get() == 'audio')
                 }
 
-                # Usar o endpoint de streaming para progresso real
                 response = requests.post(
                     f"{API_BASE_URL}/video/download-stream",
                     json=payload,
@@ -948,61 +953,55 @@ class YouTubeDownloaderGUI:
                     timeout=300
                 )
 
-                if response.status_code == 200:
-                    # Processar eventos SSE em tempo real
-                    for line in response.iter_lines():
-                        if line:
-                            line_text = line.decode('utf-8')
-
-                            # SSE envia linhas no formato "data: {json}"
-                            if line_text.startswith('data: '):
-                                json_data = line_text[6:]  # Remove "data: "
-
-                                try:
-                                    event = json.loads(json_data)
-
-                                    # Atualizar progresso real
-                                    if 'progress_percent' in event:
-                                        progress = event['progress_percent']
-                                        self.queue.put(('progress', progress))
-
-                                    # Atualizar status
-                                    if 'status' in event:
-                                        status = event['status']
-
-                                        if status == 'starting':
-                                            self.queue.put(('status', 'Iniciando download...'))
-                                        elif status == 'downloading':
-                                            message = event.get('message', 'Baixando...')
-                                            self.queue.put(('status', message))
-                                        elif status == 'processing':
-                                            self.queue.put(('status', 'Processando vídeo...'))
-                                        elif status == 'converting':
-                                            self.queue.put(('status', 'Convertendo para MP4...'))
-                                        elif status == 'completed':
-                                            self.queue.put(('status', 'Download concluído!'))
-                                            self.queue.put(('progress', 100))
-                                            self.queue.put(('download_complete', event))
-                                        elif status == 'error':
-                                            error_msg = event.get('message', 'Erro desconhecido')
-                                            self.queue.put(('error', error_msg))
-
-                                except json.JSONDecodeError:
-                                    pass
-                else:
+                if response.status_code != 200:
                     self.queue.put(('error', f"Erro no servidor: {response.status_code}"))
+                    return
+
+                for line in response.iter_lines(decode_unicode=True):
+                    if not line:
+                        continue
+                    line_text = line.strip()
+                    if line_text.startswith('data:'):
+                        json_data = line_text[5:].strip()
+                        try:
+                            event = json.loads(json_data)
+                        except Exception:
+                            continue
+
+                        if 'progress_percent' in event:
+                            try:
+                                progress = float(event.get('progress_percent', 0))
+                            except Exception:
+                                progress = 0
+                            self.queue.put(('progress', progress))
+
+                        status = event.get('status')
+                        if status == 'starting':
+                            self.queue.put(('status', 'Iniciando download...'))
+                        elif status == 'downloading':
+                            self.queue.put(('status', event.get('message', 'Baixando...')))
+                        elif status == 'processing':
+                            self.queue.put(('status', 'Processando vídeo...'))
+                        elif status == 'converting':
+                            self.queue.put(('status', 'Convertendo...'))
+                        elif status == 'completed':
+                            self.queue.put(('status', 'Download concluído!'))
+                            self.queue.put(('progress', 100))
+                            self.queue.put(('download_complete', event))
+                        elif status == 'error':
+                            self.queue.put(('error', event.get('message', 'Erro desconhecido')))
 
             except requests.exceptions.Timeout:
-                self.queue.put(('error', "Download demorou muito tempo e foi cancelado. Tente novamente."))
+                self.queue.put(('error', 'Download demorou muito tempo e foi cancelado. Tente novamente.'))
             except requests.exceptions.ConnectionError:
-                self.queue.put(('error', "Erro de conexão com o servidor. Verifique sua internet."))
+                self.queue.put(('error', 'Erro de conexão com o servidor. Verifique sua internet.'))
             except Exception as e:
-                self.queue.put(('error', f"Erro ao baixar: {str(e)}"))
+                self.queue.put(('error', f'Erro ao baixar: {e}'))
             finally:
                 self.downloading = False
                 self.queue.put(('download_finished', None))
 
-        threading.Thread(target=download, daemon=True).start()
+        threading.Thread(target=download_worker, daemon=True).start()
 
     def process_queue(self):
         """Processar mensagens da fila"""
@@ -1017,7 +1016,7 @@ class YouTubeDownloaderGUI:
                         self.server_status_var.set("🟡 Iniciando servidor...")
                     elif data == 'failed':
                         self.server_status_var.set("🔴 Erro ao iniciar servidor")
-                    elif data.startswith('error'):
+                    elif isinstance(data, str) and data.startswith('error'):
                         self.server_status_var.set(f"🔴 Erro: {data}")
 
                 elif msg_type == 'status':
@@ -1123,6 +1122,11 @@ class YouTubeDownloaderGUI:
 
     def handle_download_complete(self, result):
         """Processar conclusão do download"""
+        # Evitar múltiplos alerts se vários eventos 'completed' chegarem
+        if getattr(self, '_displaying_completion', False):
+            return
+        self._displaying_completion = True
+
         video_info = result.get('video_info', {})
         title = video_info.get('title', 'Vídeo')
         filename = result.get('filename', None)
@@ -1135,12 +1139,15 @@ class YouTubeDownloaderGUI:
         # Abrir a pasta onde o vídeo foi salvo
         download_path = str(DOWNLOAD_DIR)
 
-        messagebox.showinfo("✅ Sucesso!",
-                          f"Download concluído!\n\n{title}\n\n📁 Arquivo salvo em:\n{download_path}\n\nClique OK para abrir a pasta.",
-                          icon='info')
-
-        # Abrir a pasta de downloads após clicar OK
+        # Mostrar apenas um alert e, ao fechar, abrir a pasta
         try:
+            messagebox.showinfo(
+                "✅ Sucesso!",
+                f"Download concluído!\n\n{title}\n\n📁 Arquivo salvo em:\n{download_path}\n\nClique OK para abrir a pasta.",
+                icon='info'
+            )
+
+            # Abrir a pasta de downloads após clicar OK
             if sys.platform == 'win32':
                 os.startfile(download_path)
             elif sys.platform == 'darwin':  # macOS
@@ -1149,6 +1156,9 @@ class YouTubeDownloaderGUI:
                 os.system(f'xdg-open "{download_path}"')
         except Exception as e:
             print(f"Não foi possível abrir a pasta: {e}")
+        finally:
+            # Reset flag para permitir futuros alerts em downloads subsequentes
+            self._displaying_completion = False
 
     def on_closing(self):
         """Lidar com fechamento da aplicação"""
